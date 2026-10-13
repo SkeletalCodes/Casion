@@ -673,6 +673,10 @@ async function handle(req, res) {
   } catch (e) {
     if (e instanceof HttpError) return send(res, e.status, Object.assign({ error: e.message }, e.extra || {}));
     if (e.status === 503) return send(res, 503, { error: e.message, code: 'no_db' });
+    if (['ECONNREFUSED', 'ENOTFOUND', 'ETIMEDOUT', 'ECONNRESET', '28P01', '3D000'].includes(e.code) || /connect|timeout/i.test(e.message || '')) {
+      console.error('database unavailable:', e.message);
+      return send(res, 503, { error: 'The database is unavailable right now. Try again in a minute.', code: 'db_down' });
+    }
     console.error(e);
     return send(res, 500, { error: 'Something went wrong on the server.' });
   }

@@ -1,5 +1,5 @@
 /* Account area (#/account/<tab>): profile, security, preferences, transactions, bet history, statistics, limits.
-   Plus the VIP & rewards page (#/vip). Everything is stored in this browser only. */
+   Plus the VIP & rewards page (#/vip). Your account, balance and saved settings live on the server. */
 (function () {
   'use strict';
   const { $, $$, h, fmt, fmtMult, esc, round2 } = BB;
@@ -59,10 +59,13 @@
       $$('#pf-av button').forEach((x) => x.classList.toggle('on', x === b));
       BB.sfx('click');
     });
-    $('#pf-save').addEventListener('click', () => {
+    $('#pf-save').addEventListener('click', async () => {
       const name = $('#pf-name').value.trim();
-      if (name.length < 2) { $('#pf-err').textContent = 'A username needs at least 2 characters.'; $('#pf-name').focus(); return; }
-      u.name = name.slice(0, 16);
+      if (!/^[A-Za-z0-9_.-]{2,16}$/.test(name)) { $('#pf-err').textContent = 'Usernames are 2–16 letters, numbers, dots, dashes or underscores.'; $('#pf-name').focus(); return; }
+      if (name !== u.name) {
+        try { await BB.api('POST', 'me/profile', { name }); } catch (e) { $('#pf-err').textContent = e.message; $('#pf-name').focus(); return; }
+      }
+      u.name = name;
       u.avatar = av;
       BB.saveUsers();
       BB.paintChrome();
@@ -104,7 +107,7 @@
   }
 
   function security(body) {
-    const u = BB.user(), isAdmin = BB.sessionKey() === 'admin';
+    const u = BB.user(), isOwner = !!u.owner;
     body.innerHTML = `
       <section class="card-sec">
         <h3>Password</h3>
@@ -128,18 +131,23 @@
       </section>
       <section class="card-sec danger">
         <h3>Danger zone</h3>
-        ${setRow('Reset demo account', 'Balance back to 100,000.00 and all bets, transactions, stats and rewards wiped.', '<button type="button" class="btn danger sm" id="sc-reset">Reset</button>')}
-        ${isAdmin ? '' : setRow('Delete account', 'Removes this account from this browser for good.', '<button type="button" class="btn danger sm" id="sc-del">Delete</button>')}
+        ${setRow('Reset account', `Balance back to ${fmt(BB.START_BALANCE)} and all bets, transactions, stats and rewards wiped.`, '<button type="button" class="btn danger sm" id="sc-reset">Reset</button>')}
+        ${isOwner ? '' : setRow('Delete account', 'Permanently removes your account and everything in it.', '<button type="button" class="btn danger sm" id="sc-del">Delete</button>')}
       </section>`;
     const err = (msg, el) => { $('#sc-err').textContent = msg; if (el) el.focus(); };
-    $('#sc-save').addEventListener('click', () => {
-      const cur = $('#sc-cur'), nw = $('#sc-new'), rep = $('#sc-rep');
-      if (cur.value !== u.pass) return err('Current password is wrong.', cur);
-      if (nw.value.length < 4) return err('New password needs at least 4 characters.', nw);
+    $('#sc-save').addEventListener('click', async () => {
+      const cur = $('#sc-cur'), nw = $('#sc-new'), rep = $('#sc-rep'), btn = $('#sc-save');
+      if (!cur.value) return err('Enter your current password.', cur);
+      if (nw.value.length < 8) return err('New password needs at least 8 characters.', nw);
       if (nw.value !== rep.value) return err('The two new passwords do not match.', rep);
-      u.pass = nw.value;
-      BB.saveUsers();
-      BB.notify('Password changed', 'Your password was updated from ' + device() + '.', 'lock');
+      btn.disabled = true;
+      try {
+        await BB.api('POST', 'auth/password', { current: cur.value, next: nw.value });
+      } catch (e) {
+        btn.disabled = false;
+        return err(e.message, e.data && e.data.field === 'current' ? cur : nw);
+      }
+      BB.notify('Password changed', 'Your password was updated from ' + device() + '. Other devices were signed out.', 'lock');
       security(body);
       BB.toast('Password updated.', 'ok');
     });
@@ -149,13 +157,34 @@
       else tfaSetup(() => flip(true));
     });
     $('#sc-reset').addEventListener('click', () => {
-      BB.confirm({ title: 'Reset this demo account?', body: 'Your balance goes back to 100,000.00 and your history, statistics, VIP progress and notifications are erased.', ok: 'Reset account', danger: true })
-        .then((ok) => { if (ok) { BB.resetAccount(); BB.toast('Account reset.', 'ok'); } });
+      BB.confirm({ title: 'Reset your account?', body: `Your balance goes back to ${fmt(BB.START_BALANCE)} and your history, statistics, VIP progress and notifications are erased.`, ok: 'Reset account', danger: true })
+        .then((ok) => { if (ok) BB.resetAccount().then((done) => { if (done) BB.toast('Account reset.', 'ok'); }); });
     });
     const del = $('#sc-del');
-    if (del) del.addEventListener('click', () => {
-      BB.confirm({ title: 'Delete this account?', body: 'This removes the account and everything in it from this browser.', ok: 'Delete account', danger: true })
-        .then((ok) => { if (ok) { BB.deleteAccount(); BB.toast('Account deleted.', 'ok'); } });
+    if (del) del.addEventListener('click', deleteFlow);
+  }
+
+  /** Deleting is permanent, so it asks for the password first. */
+  function deleteFlow() {
+    const m = h(`<div class="modal-back"><div class="modal single small" role="alertdialog" aria-modal="true" aria-label="Delete account">
+      <button class="modal-x" aria-label="Close">&times;</button>
+      <div class="modal-body"><h2 class="modal-title">Delete your account?</h2>
+        <p class="confirm-text">Your account, balance and history are removed for good. Enter your password to confirm.</p>
+        <label class="field"><span class="field-l">Password</span><input type="password" id="del-pw" autocomplete="current-password"></label>
+        <div class="form-err" id="del-err"></div>
+        <div class="confirm-btns"><button type="button" class="btn ghost" id="del-no">Cancel</button><button type="button" class="btn danger" id="del-yes">Delete account</button></div>
+      </div></div></div>`);
+    BB.showModal(m);
+    setTimeout(() => $('#del-pw', m).focus(), 60);
+    $('#del-no', m).addEventListener('click', () => BB.hideModal(m));
+    $('#del-yes', m).addEventListener('click', async () => {
+      const pw = $('#del-pw', m).value;
+      if (!pw) { $('#del-err', m).textContent = 'Enter your password.'; return; }
+      $('#del-yes', m).disabled = true;
+      try { await BB.api('DELETE', 'me', { password: pw }); } catch (e) { $('#del-err', m).textContent = e.message; $('#del-yes', m).disabled = false; return; }
+      BB.hideModal(m);
+      await BB.deleteAccount(pw, true);
+      BB.toast('Account deleted.', 'ok');
     });
   }
 
@@ -172,7 +201,7 @@
         <h3>Play</h3>
         ${setRow('Keyboard shortcuts', '<code>Space</code> bet · <code>A</code> halve the bet · <code>S</code> double it', sw('hotkeys', u.prefs.hotkeys, 'Keyboard shortcuts'))}
         ${setRow('Reduce motion', 'Tone down page transitions and decorative animation.', sw('calm', u.prefs.calm, 'Reduce motion'))}
-        ${setRow('Simulated players', 'Show made-up bets from other players in the lobby feed.', sw('feed', u.prefs.feed, 'Simulated players'))}
+        ${setRow('Live bet feed', "Show other players' bets in the lobby feed.", sw('feed', u.prefs.feed, 'Live bet feed'))}
       </section>
       <section class="card-sec">
         <h3>Privacy</h3>
@@ -504,7 +533,7 @@
       u.vip.rake = Math.round((u.vip.rake - amt) * 10000) / 10000;
       u.vip.claimed = round2(u.vip.claimed + amt);
       BB.addTx({ type: 'rakeback', note: 'Rakeback claim', usd: amt, status: 'completed' });
-      BB.credit(amt);
+      BB.credit(amt, false, 'rakeback');
       BB.sfx('cashout');
       BB.toast(`Rakeback claimed: +${fmt(amt)} coins.`, 'ok');
       paintVip(root);
@@ -514,7 +543,7 @@
       u.vip.daily = Date.now();
       u.vip.claimed = round2(u.vip.claimed + L.daily);
       BB.addTx({ type: 'bonus', note: 'Daily bonus', usd: L.daily, status: 'completed' });
-      BB.credit(L.daily);
+      BB.credit(L.daily, false, 'daily', L.name);
       BB.sfx('win');
       BB.confetti($('.vip-cards'), 50);
       BB.toast(`Daily bonus claimed: +${fmt(L.daily)} coins.`, 'ok');

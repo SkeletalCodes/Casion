@@ -1,15 +1,13 @@
 /* Lobby — hero + promo carousel, latest-wins strip, recently played, then one "All games" grid.
    Slots sit behind a single tile that opens their own lobby (#/slots), filtered by studio.
-   The other "players" in the wins strip and the live table are simulated. */
+   The wins strip and the live bets table come from the server: real rounds by real players. */
 (function () {
   'use strict';
-  const { $, $$, h, rand, randInt, round2, fmt, esc } = BB;
+  const { $, $$, h, fmt, esc } = BB;
   const ic = BB.icon;
 
-  const NAMES = ['mango_22', 'Hidden', 'kiwi', 'LuckyLad', 'n0va', 'peelgood', 'zest', 'Rollin', 'Hidden', 'SplitAces', 'moonbag', 'tilt_proof', 'Juno', 'Hidden', 'pocket7s', 'wavey', 'Karma', 'driftwood'];
-  const MULTS = [1.2, 1.5, 1.98, 2, 2.4, 3, 3.6, 5, 8.1, 13, 24];
-  const FILTERS = [['all', 'All games'], ['table', 'Table'], ['instant', 'Instant'], ['cashout', 'Cash out']];
-  const TITLES = { originals: 'BananaBet Originals', table: 'Table games', instant: 'Instant win', cashout: 'Climb & cash out', fav: 'Favourites' };
+  const FILTERS = [['all', 'All games'], ['arcade', 'Arcade'], ['table', 'Table'], ['instant', 'Instant'], ['cashout', 'Cash out']];
+  const TITLES = { originals: 'BananaBet Originals', arcade: 'Arcade', table: 'Table games', instant: 'Instant win', cashout: 'Climb & cash out', fav: 'Favourites' };
   const GRID_IC = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="4" y="4" width="7" height="7" rx="1.500"/><rect x="13" y="4" width="7" height="7" rx="1.500"/><rect x="4" y="13" width="7" height="7" rx="1.500"/><rect x="13" y="13" width="7" height="7" rx="1.500"/></svg>';
   const SLOTS_ART = `<svg viewBox="0 0 200 200">
     <rect x="30" y="22" width="140" height="150" rx="22" fill="#3a0d2c" stroke="#ffc93c" stroke-width="5"/>
@@ -32,41 +30,63 @@
     return g.cat === cat;
   };
 
-  function fakeBet() {
-    const id = BB.order[randInt(BB.order.length)];
-    const wager = round2(Math.pow(rand(), 2.2) * 4000 + 5);
-    const mult = rand() < 0.46 ? MULTS[Math.min(MULTS.length - 1, Math.floor(Math.pow(rand(), 1.8) * MULTS.length))] : 0;
-    BB.logBet(id, wager, mult, round2(wager * mult), NAMES[randInt(NAMES.length)]);
+  /* live feed from /api/feed */
+  let feed = { recent: [], big: [] }, lastTop = 0;
+  const feedTimer = { soon: 0 };
+  const row = (b) => ({ game: BB.games[b.game] ? BB.games[b.game].name : b.game, id: b.game, user: b.name || 'Hidden', mine: b.mine, wager: b.wager, mult: b.mult, payout: b.payout, t: b.t });
+  async function loadFeed() {
+    try { feed = await BB.api('GET', 'feed'); } catch (e) { return; }
+    const top = feed.recent[0] ? feed.recent[0].id : 0;
+    paintFeed(top !== lastTop && lastTop !== 0);
+    lastTop = top;
+    paintWinners();
   }
 
   function paintFeed(flash) {
     const box = $('#feed');
     if (!box) return;
-    let list = BB.bets;
+    let list = (tab === 'big' ? feed.big : feed.recent).map(row);
     if (!feedOn()) list = list.filter((b) => b.mine);
     if (tab === 'mine') list = BB.history();
-    if (tab === 'big') list = list.filter((b) => b.mult >= 5 && b.payout > 0);
     list = list.slice(0, 10);
     box.innerHTML = list.length
       ? `<div class="tr th"><span class="td g">Game</span><span class="td u">Player</span><span class="td n">Bet</span><span class="td m">Multiplier</span><span class="td n">Profit</span></div>` + list.map((b) => BB.betRow(b, true)).join('')
-      : `<div class="empty">${tab === 'mine' ? 'Your bets will show up here once you play a round.' : 'Nothing here yet.'}</div>`;
+      : `<div class="empty">${tab === 'mine' ? 'Your bets will show up here once you play a round.' : BB.serverDown() ? 'The live feed is offline right now.' : 'No bets yet — be the first to play.'}</div>`;
     if (flash && list.length && box.children[1]) box.children[1].classList.add('new');
   }
-  const onBet = () => paintFeed(true);
+  const onBet = () => { clearTimeout(feedTimer.soon); feedTimer.soon = setTimeout(loadFeed, 700); };
 
+  /** The marquee: real recent big wins, or a strip of games to try while there are none. */
   function winnersHTML() {
-    const cards = [];
-    for (let i = 0; i < 14; i++) {
-      const g = BB.games[BB.order[(i * 5 + 3) % BB.order.length]];
-      const amt = round2(Math.pow(rand(), 2) * 9000 + 120);
-      cards.push(`<a class="wcard" href="#/g/${g.id}">
-        <span class="wthumb" style="--c1:${g.colors[0]};--c2:${g.colors[1]}"><i>${g.icon}</i></span>
-        <span class="wmeta"><b>${g.name}</b><small>${esc(NAMES[randInt(NAMES.length)])}</small></span>
-        <span class="wamt">+${fmt(amt)}</span>
-      </a>`);
+    const wins = feed.big.filter((b) => BB.games[b.game]).slice(0, 14);
+    let cards;
+    if (wins.length >= 3) {
+      cards = wins.map((b) => {
+        const g = BB.games[b.game];
+        return `<a class="wcard" href="#/g/${g.id}">
+          <span class="wthumb" style="--c1:${g.colors[0]};--c2:${g.colors[1]}"><i>${g.icon}</i></span>
+          <span class="wmeta"><b>${esc(g.name)}</b><small>${esc(b.name || 'Hidden')} · ${BB.fmtMult(b.mult)}</small></span>
+          <span class="wamt">+${fmt(b.payout - b.wager)}</span>
+        </a>`;
+      });
+    } else {
+      cards = BB.order.filter((id) => BB.games[id].cat !== 'slots').slice(0, 14).map((id) => {
+        const g = BB.games[id], r = BB.rules && BB.rules[id];
+        return `<a class="wcard" href="#/g/${g.id}">
+          <span class="wthumb" style="--c1:${g.colors[0]};--c2:${g.colors[1]}"><i>${g.icon}</i></span>
+          <span class="wmeta"><b>${esc(g.name)}</b><small>RTP ${g.rtp}%</small></span>
+          <span class="wamt">${r && r.max ? 'up to ' + r.max : 'Play'}</span>
+        </a>`;
+      });
     }
-    const row = cards.join('');
-    return `<div class="winners-track">${row}${row}</div>`; // doubled so the marquee loops seamlessly
+    const strip = cards.join('');
+    return `<div class="winners-track">${strip}${strip}</div>`; // doubled so the marquee loops seamlessly
+  }
+  function paintWinners() {
+    const v = $('#winners-view');
+    if (!v) return;
+    const html = winnersHTML();
+    if (v.dataset.sig !== html.length + ':' + feed.big.length) { v.innerHTML = html; v.dataset.sig = html.length + ':' + feed.big.length; }
   }
 
   function chips(x, y, n, color) {
@@ -146,7 +166,7 @@
     dots.forEach((d, i) => d.classList.toggle('on', i === slide));
   }
 
-  const VALID = /^(all|originals|table|instant|cashout|fav)$/;
+  const VALID = /^(all|originals|arcade|table|instant|cashout|fav)$/;
   /** Old links to the slots filter or a studio now live on the slots lobby. */
   const moved = (sub) => (sub === 'slots' || sub === 'providers' ? '#/slots' : sub && sub.indexOf('prov-') === 0 ? '#/slots/' + sub.slice(5) : '');
 
@@ -165,7 +185,7 @@
           <div class="hero-main" id="hero-main">
             <span class="kicker">Play-money casino</span>
             <h1>${count} games.<br><em>Zero risk.</em></h1>
-            <p>Slots, blackjack, roulette, crash and more on a 100,000 play-coin balance. Every result is provably fair, and the crypto cashier is a simulation — no real money anywhere.</p>
+            <p>Slots, blackjack, roulette, crash, plus arcade games like Snake, Darts and Whack-a-Mole — all on a free ${fmt(BB.START_BALANCE).replace(/\.00$/, '')} play-coin balance. Every result is provably fair, and no real money is involved anywhere.</p>
             ${authed
               ? `<div class="hero-cta"><a class="btn primary lg" href="#/g/${playId}">${recent.length ? 'Continue ' + esc(BB.games[playId].name) : 'Play now'}</a><button class="btn ghost lg" data-open="wallet">${ic('wallet', 18)}Wallet</button></div>
                  <div class="hero-stats"><div><b data-count="${u.stats.wagered}" data-dec="2">0.00</b><small>Wagered</small></div><div><b data-count="${u.stats.bets}" data-dec="0">0</b><small>Bets</small></div><div><b style="color:${v.cur.color}">${v.cur.name}</b><small>VIP level</small></div></div>`
@@ -183,9 +203,9 @@
           </div>
         </section>
 
-        <div class="winners" aria-label="Latest wins (simulated)">
-          <div class="winners-tag"><span class="live-dot"></span>Latest wins</div>
-          <div class="winners-view">${winnersHTML()}</div>
+        <div class="winners" aria-label="Latest big wins">
+          <div class="winners-tag"><span class="live-dot"></span>Big wins</div>
+          <div class="winners-view" id="winners-view">${winnersHTML()}</div>
         </div>
 
         ${recent.length ? `<div class="sec-head sm"><h2>Continue playing</h2></div>
@@ -280,11 +300,8 @@
       grid.addEventListener('pointerout', (e) => { const t = e.target.closest('.tile'); if (t && !t.contains(e.relatedTarget)) { t.style.removeProperty('--rx'); t.style.removeProperty('--ry'); } });
 
       paintGames();
-      if (feedOn()) {
-        if (BB.bets.filter((b) => !b.mine).length < 8) for (let i = 0; i < 9; i++) fakeBet();
-        timer = setInterval(fakeBet, 1500);
-      }
       paintFeed(false);
+      if (!BB.serverDown()) { loadFeed(); timer = setInterval(() => { if (document.visibilityState === 'visible') loadFeed(); }, 5000); }
       document.addEventListener('bb:bet', onBet);
       if (sub) setTimeout(() => { const t = $('#games-top'); if (t) window.scrollTo(0, t.getBoundingClientRect().top + window.scrollY - 84); }, 30);
     },
@@ -303,6 +320,7 @@
 
     unmount() {
       clearInterval(timer);
+      clearTimeout(feedTimer.soon);
       clearInterval(slideTimer);
       document.removeEventListener('bb:bet', onBet);
     },

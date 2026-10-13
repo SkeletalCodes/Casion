@@ -3,21 +3,25 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>BananaBet — Originals</title>
+<title>BananaBet — Play-money casino</title>
+<meta name="description" content="A free play-money casino: slots, table games, crash, plinko and arcade games like Snake, Darts and Whack-a-Mole. No real money.">
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <link rel="alternate icon" href="favicon.ico">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<meta name="theme-color" content="#0b0c10">
+<meta name="theme-color" content="#0c0616">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <!-- ?v= is a cache-buster: bump it when css/js change so browsers never mix old and new files -->
-<link rel="stylesheet" href="css/style.css?v=8">
-<link rel="stylesheet" href="css/games.css?v=8">
-<link rel="stylesheet" href="css/app.css?v=8">
-<link rel="stylesheet" href="css/polish.css?v=8">
+<link rel="stylesheet" href="css/style.css?v=9">
+<link rel="stylesheet" href="css/games.css?v=9">
+<link rel="stylesheet" href="css/app.css?v=9">
+<link rel="stylesheet" href="css/polish.css?v=9">
+<link rel="stylesheet" href="css/theme.css?v=9">
+<link rel="stylesheet" href="css/arcade.css?v=9">
+<link rel="stylesheet" href="css/admin.css?v=9">
 </head>
-<body>
+<body class="booting">
 
 <!-- shared gold gradients for the coin artwork -->
 <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
@@ -32,9 +36,10 @@
 </svg>
 
 <div id="route-bar"></div>
+<div class="announce" id="announce" hidden></div>
 
 <header class="topbar">
-  <button class="icon-btn" id="menu-btn" aria-label="Toggle menu">
+  <button class="icon-btn" id="menu-btn" aria-label="Toggle menu" title="Collapse or expand the menu">
     <svg viewBox="0 0 24 24" width="20" height="20"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
   </button>
   <a class="logo" href="#/">
@@ -68,7 +73,7 @@
 <aside class="sidebar" id="sidebar">
   <nav id="nav"></nav>
   <div class="side-foot">
-    <span class="dot"></span> Demo mode · play money only.<br>The crypto cashier is simulated.
+    <span class="dot"></span> Play money only · 18+<br>The crypto cashier is simulated.
   </div>
 </aside>
 <div class="scrim" id="scrim"></div>
@@ -79,7 +84,7 @@
     <div class="footer-grid">
       <div class="footer-about">
         <div class="footer-brand">BANANA<b>BET</b></div>
-        <p>A demo casino front end. The balance is play money, the crypto cashier is a simulation, and nothing here can be bought, sold or cashed out.</p>
+        <p>A free play-money casino. Balances are play coins, the crypto cashier is a simulation, and nothing here can be bought, sold or cashed out.</p>
         <span class="age">18+</span>
       </div>
       <div class="footer-col" id="fg1"></div>
@@ -94,40 +99,46 @@
       </div>
     </div>
     <div class="coins-row" id="coins-row"></div>
-    <div class="footer-base"><span>BananaBet · play-money demo · not a real or licensed gambling operator</span><span>No real funds are accepted, held or paid out.</span></div>
+    <div class="footer-base"><span>BananaBet · play-money site · not a real or licensed gambling operator</span><span>No real funds are accepted, held or paid out.</span></div>
   </footer>
 </main>
 
 <div id="modal-root"></div>
 <div id="toasts"></div>
 
-<script src="js/sha256.js?v=8"></script>
-<script src="js/core.js?v=8"></script>
-<script src="js/fair.js?v=8"></script>
-<script src="js/rules.js?v=8"></script>
-<script src="js/games/blackjack.js?v=8"></script>
-<script src="js/games/baccarat.js?v=8"></script>
-<script src="js/games/roulette.js?v=8"></script>
-<script src="js/games/hilo.js?v=8"></script>
-<script src="js/games/keno.js?v=8"></script>
-<script src="js/games/dice.js?v=8"></script>
-<script src="js/games/limbo.js?v=8"></script>
-<script src="js/games/plinko.js?v=8"></script>
-<script src="js/games/wheel.js?v=8"></script>
-<script src="js/games/slots.js?v=8"></script>
-<script src="js/games/diamonds.js?v=8"></script>
-<script src="js/games/double.js?v=8"></script>
-<script src="js/games/coinflip.js?v=8"></script>
-<script src="js/games/crash.js?v=8"></script>
-<script src="js/games/mines.js?v=8"></script>
-<script src="js/games/towers.js?v=8"></script>
-<script src="js/games/pump.js?v=8"></script>
-<script src="js/slotengine.js?v=8"></script>
-<script src="js/tumble.js?v=8"></script>
-<script src="js/wallet.js?v=8"></script>
-<script src="js/account.js?v=8"></script>
-<script src="js/lobby.js?v=8"></script>
-<script src="js/audio.js?v=8"></script>
+<script src="js/sha256.js?v=9"></script>
+<script src="js/core.js?v=9"></script>
+<script src="js/fair.js?v=9"></script>
+<script src="js/rules.js?v=9"></script>
+<script src="js/games/blackjack.js?v=9"></script>
+<script src="js/games/baccarat.js?v=9"></script>
+<script src="js/games/roulette.js?v=9"></script>
+<script src="js/games/hilo.js?v=9"></script>
+<script src="js/games/keno.js?v=9"></script>
+<script src="js/games/dice.js?v=9"></script>
+<script src="js/games/limbo.js?v=9"></script>
+<script src="js/games/plinko.js?v=9"></script>
+<script src="js/games/wheel.js?v=9"></script>
+<script src="js/games/slots.js?v=9"></script>
+<script src="js/games/diamonds.js?v=9"></script>
+<script src="js/games/double.js?v=9"></script>
+<script src="js/games/coinflip.js?v=9"></script>
+<script src="js/games/crash.js?v=9"></script>
+<script src="js/games/mines.js?v=9"></script>
+<script src="js/games/towers.js?v=9"></script>
+<script src="js/games/pump.js?v=9"></script>
+<script src="js/arcade/snake.js?v=9"></script>
+<script src="js/arcade/darts.js?v=9"></script>
+<script src="js/arcade/moles.js?v=9"></script>
+<script src="js/arcade/rps.js?v=9"></script>
+<script src="js/arcade/cups.js?v=9"></script>
+<script src="js/slotengine.js?v=9"></script>
+<script src="js/tumble.js?v=9"></script>
+<script src="js/wallet.js?v=9"></script>
+<script src="js/account.js?v=9"></script>
+<script src="js/lobby.js?v=9"></script>
+<script src="js/admin.js?v=9"></script>
+<script src="js/audio.js?v=9"></script>
 <script>BB.start();</script>
 </body>
 </html>

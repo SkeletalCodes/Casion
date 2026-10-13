@@ -131,7 +131,6 @@
   function tick() {
     let u = BB.user();
     if (!u || !u.tx.some(isOpen)) return;
-    BB.refresh(); // stay in step with other tabs, so a deposit is never credited twice
     u = BB.user();
     if (!u) return;
     const now = Date.now();
@@ -144,7 +143,7 @@
         if (confs !== t.confs) { t.confs = confs; t.status = 'confirming'; changed = true; }
         if (confs >= t.need) {
           t.status = 'completed'; t.done = now; changed = true;
-          BB.credit(t.usd);
+          BB.credit(t.usd, false, 'deposit', t.coin + ' ' + t.id);
           BB.notify('Deposit confirmed', `${fmtCoin(t.amt, byId[t.coin])} ${t.coin} arrived — ${fmt(t.usd)} coins added.`, 'dep');
           BB.toast(`Deposit confirmed: +${fmt(t.usd)} coins.`, 'ok');
           BB.sfx('cashout');
@@ -170,7 +169,7 @@
   function withdraw(coinId, netId, usd, addr, tag) {
     const c = byId[coinId], n = netOf(c, netId);
     usd = round2(usd);
-    if (!BB.debit(usd)) return null;
+    if (!BB.debit(usd, 'withdrawal', c.id)) return null;
     return BB.addTx({ type: 'withdrawal', coin: c.id, net: n.id, amt: Math.max(0, toCoin(usd, c) - n.fee), fee: n.fee, usd, addr, tag: tag || '', status: 'pending' });
   }
 
@@ -180,7 +179,7 @@
     if (!t || t.type !== 'withdrawal' || t.status !== 'pending') { BB.toast('That withdrawal can no longer be cancelled.', 'err'); return false; }
     t.status = 'cancelled';
     t.done = Date.now();
-    BB.credit(t.usd);
+    BB.credit(t.usd, false, 'refund', 'Cancelled withdrawal ' + t.id);
     BB.saveUsers();
     BB.emit('bb:tx');
     BB.toast(`Withdrawal cancelled — ${fmt(t.usd)} coins returned.`, 'ok');

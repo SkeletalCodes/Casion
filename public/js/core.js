@@ -1,11 +1,10 @@
-/* BananaBet core: fake auth, play-money balance, stats, router, shared UI.
-   Front end only — everything lives in localStorage, nothing talks to a server. */
+/* BananaBet core: accounts, play-money balance, stats, router, shared UI.
+   Accounts live on the server (/api). The balance is mirrored here so games feel instant: every
+   change is queued as an "op" and sent in small batches, and the server's answer is the truth. */
 (function () {
   'use strict';
 
-  const START_BALANCE = 100000;
-  const LS_USERS = 'bb.users';
-  const LS_SESSION = 'bb.session';
+  let START_BALANCE = 100000; // replaced by the server's setting on boot
 
   /* ---------- tiny helpers ---------- */
   const $ = (s, r = document) => r.querySelector(s);
@@ -114,6 +113,14 @@
     reset: '<path d="M5 12a7 7 0 1 0 2.200-5.100"/><path d="M5 4.500v3.500h3.500"/>',
     caret: '<path d="M7 10l5 5 5-5"/>',
     bolt: '<path d="M13 3L5 13.500h6L10 21l8-10.500h-6z"/>',
+    dash: '<rect x="3.500" y="3.500" width="7" height="9" rx="1.500"/><rect x="13.500" y="3.500" width="7" height="5" rx="1.500"/><rect x="13.500" y="11.500" width="7" height="9" rx="1.500"/><rect x="3.500" y="15.500" width="7" height="5" rx="1.500"/>',
+    users: '<circle cx="9" cy="8.500" r="3.500"/><path d="M2.500 20a6.500 6.500 0 0 1 13 0"/><path d="M15.500 5.200a3.500 3.500 0 0 1 0 6.600M18 14.300a6.500 6.500 0 0 1 3.500 5.700"/>',
+    ban: '<circle cx="12" cy="12" r="8.500"/><path d="M6 6l12 12"/>',
+    edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.500 6.500l4 4"/>',
+    trash: '<path d="M4.500 7h15M9.500 7V4.500h5V7M6.500 7l1 13h9l1-13"/>',
+    megaphone: '<path d="M4 10v4h3l7 4.500V5.500L7 10z"/><path d="M17.500 9a4 4 0 0 1 0 6"/>',
+    menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
+    search: '<circle cx="11" cy="11" r="6.500"/><path d="M16 16l4.500 4.500"/>',
   };
   const ic = (name, size) => `<svg viewBox="0 0 24 24" width="${size || 18}" height="${size || 18}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ''}</svg>`;
 
@@ -138,11 +145,11 @@
     return `<span class="avatar${cls ? ' ' + cls : ''}" style="--a1:${a[0]};--a2:${a[1]}">${esc((u.name || '?')[0].toUpperCase())}</span>`;
   }
 
-  /* ---------- fake users (demo only: plain text in localStorage, never do this for real auth) ---------- */
+  /* ---------- accounts ---------- */
   /** Fill in anything a saved account is missing, so older saves keep working. */
   function prep(u, key) {
     if (!u || typeof u !== 'object') return;
-    if (typeof u.balance !== 'number' || !isFinite(u.balance)) u.balance = START_BALANCE;
+    if (typeof u.balance !== 'number' || !isFinite(u.balance)) u.balance = 0;
     u.email = u.email || key;
     u.joined = u.joined || Date.now();
     u.avatar = clamp(u.avatar | 0, 0, AVATARS.length - 1);
@@ -159,7 +166,7 @@
     tx.id = tx.id || txId();
     tx.t = tx.t || Date.now();
     u.tx.unshift(tx);
-    if (u.tx.length > 300) u.tx.length = 300;
+    if (u.tx.length > 150) u.tx.length = 150;
     return tx;
   }
   function pushNote(u, title, body, kind) {
@@ -167,29 +174,184 @@
     if (u.notes.length > 30) u.notes.length = 30;
   }
   function welcome(u) {
-    pushTx(u, { type: 'bonus', note: 'Welcome balance', usd: START_BALANCE, status: 'completed' });
-    pushNote(u, 'Welcome to BananaBet', 'Your account starts with 100,000.00 play coins. Nothing here is real money.', 'gift');
+    pushTx(u, { type: 'bonus', note: 'Welcome balance', usd: u.balance, status: 'completed' });
+    pushNote(u, 'Welcome to BananaBet', `Your account starts with ${fmt(u.balance)} play coins. Nothing here is real money.`, 'gift');
   }
 
-  let users = store.get(LS_USERS, null) || {};
-  if (!users.admin) { users.admin = { name: 'admin', pass: 'admin', balance: START_BALANCE }; prep(users.admin, 'admin'); welcome(users.admin); }
-  Object.keys(users).forEach((k) => prep(users[k], k));
-  let session = store.get(LS_SESSION, null);
-  if (session && !users[session]) session = null;
+  /* ---------- talking to the server ---------- */
+  let users = {};        // just the signed-in account, keyed by email (older code reads it as a map)
+  let session = null;    // email of the signed-in account
   let since = Date.now();
+  let settings = { announcement: '', signupsOpen: true, startBalance: START_BALANCE };
+  let serverDown = '';   // why the API can't be used right now, if it can't
 
-  const saveUsers = () => store.set(LS_USERS, users);
+  async function api(method, path, body, opts) {
+    let r;
+    try {
+      r = await fetch('/api/' + path, {
+        method, credentials: 'same-origin', keepalive: !!(opts && opts.keepalive),
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'bb' },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+    } catch (e) {
+      const err = new Error("Can't reach the server — check your connection.");
+      err.network = true;
+      throw err;
+    }
+    let data = null;
+    try { data = await r.json(); } catch (e) { /* not JSON */ }
+    if (!r.ok) {
+      const err = new Error((data && data.error) || `Server error (${r.status}).`);
+      err.status = r.status;
+      err.data = data || {};
+      if (r.status === 401 && session && path.indexOf('auth/') !== 0) lostSession('Your session ended — please log in again.');
+      throw err;
+    }
+    return data || {};
+  }
+
+  /** Turn the server's account into the local shape the games use. */
+  function adopt(su) {
+    const u = Object.assign({}, su.state || {});
+    Object.assign(u, { id: su.id, name: su.name, email: su.email, balance: su.balance, joined: su.createdAt, role: su.role, isAdmin: !!su.isAdmin, owner: !!su.owner });
+    prep(u, su.email);
+    users = {};
+    users[su.email] = u;
+    session = su.email;
+    return u;
+  }
+  const SERVER_KEYS = ['id', 'name', 'email', 'balance', 'joined', 'role', 'isAdmin', 'owner'];
+  function stateOf(u) {
+    const s = {};
+    Object.keys(u).forEach((k) => { if (SERVER_KEYS.indexOf(k) < 0) s[k] = u[k]; });
+    return s;
+  }
+  function applySettings(s) {
+    if (!s) return;
+    settings = Object.assign(settings, s);
+    START_BALANCE = Number(settings.startBalance) || 0;
+    paintAnnounce();
+  }
+
+  /* Saved state (prefs, favourites, history, VIP progress...) is written back a moment after it changes. */
+  let stateTimer = 0, stateDirty = false;
+  function saveUsers() {
+    if (!session) return;
+    stateDirty = true;
+    clearTimeout(stateTimer);
+    stateTimer = setTimeout(pushState, 1200);
+  }
+  function pushState(keepalive) {
+    clearTimeout(stateTimer);
+    const u = user();
+    if (!u || !stateDirty) return Promise.resolve();
+    stateDirty = false;
+    return api('PUT', 'me/state', { state: stateOf(u) }, { keepalive: keepalive === true }).catch((e) => {
+      if (e.network || e.status >= 500) { stateDirty = true; stateTimer = setTimeout(pushState, 5000); }
+    });
+  }
+
+  /* Balance ops go out in batches. A batch keeps its id until the server confirms it,
+     so a retry after a dropped connection is never applied twice. */
+  let opQ = [], opBatch = null, opBusy = false, opTimer = 0, opRetry = 0;
+  const batchId = () => { const a = new Uint8Array(12); crypto.getRandomValues(a); return Array.from(a, (b) => b.toString(16).padStart(2, '0')).join(''); };
+  const opsIdle = () => !opQ.length && !opBatch && !opBusy;
+  function queueOp(op) {
+    if (!session) return;
+    opQ.push(op);
+    clearTimeout(opTimer);
+    opTimer = setTimeout(flushOps, 200);
+  }
+  async function flushOps(keepalive) {
+    clearTimeout(opTimer);
+    opTimer = 0;
+    if (opBusy || !session) return;
+    if (!opBatch) {
+      if (!opQ.length) return;
+      opBatch = { id: batchId(), ops: opQ.splice(0, 200) };
+    }
+    opBusy = true;
+    const who = session;
+    let res = null, err = null;
+    try { res = await api('POST', 'ops', opBatch, { keepalive: keepalive === true }); } catch (e) { err = e; }
+    opBusy = false;
+    if (who !== session) { opBatch = null; return; }
+    if (res) {
+      opBatch = null;
+      opRetry = 0;
+      if (!res.ok && res.rejected) {
+        toast(res.rejected.error || 'The server refused that.', 'err');
+        opQ = []; // anything queued after a refused op depended on it
+        syncBalance(res.balance, true);
+      } else syncBalance(res.balance);
+    } else if (err.network || err.status >= 500) {
+      opRetry = Math.min(opRetry + 1, 6);
+      opTimer = setTimeout(flushOps, 800 * Math.pow(2, opRetry - 1));
+      return;
+    } else {
+      opBatch = null;
+      if (err.status !== 401) { toast(err.message, 'err'); refreshMe(); }
+    }
+    if (opQ.length) opTimer = setTimeout(flushOps, 100);
+  }
+  /** Wait (briefly) until every queued op has reached the server. */
+  async function drainOps() {
+    for (let i = 0; i < 40 && session && !opsIdle(); i++) {
+      if (!opBusy) await flushOps(); else await sleep(150);
+      if (opRetry > 2) break; // offline: don't hold the UI hostage
+    }
+  }
+  /** Leaving the page: send whatever is still queued in a request that outlives the tab. */
+  function flushOnExit() {
+    if (!session) return;
+    pushState(true);
+    if (opBusy) { if (opQ.length) api('POST', 'ops', { id: batchId(), ops: opQ.splice(0, 200) }, { keepalive: true }).catch(() => {}); }
+    else flushOps(true);
+  }
+
+  /** Take the server's balance when nothing of ours is still on the way (an admin may have changed it). */
+  function syncBalance(b, force) {
+    if (!session || typeof b !== 'number' || !isFinite(b)) return;
+    if (!force && !opsIdle()) return;
+    const before = balance();
+    if (Math.abs(before - b) < 0.01) return;
+    users[session].balance = round2(b);
+    paintBalance(b > before ? 'up' : 'down');
+    floatDelta(round2(b - before));
+    emit('bb:balance');
+  }
+
+  /** Re-read the account (balance, role, ban) and site settings. */
+  async function refreshMe() {
+    if (serverDown) return;
+    let r;
+    try { r = await api('GET', 'me'); } catch (e) { return; }
+    applySettings(r.settings);
+    if (!session) return;
+    if (!r.user || r.user.email !== session) { lostSession(r.banned ? 'This account has been suspended. ' + r.banned : 'You were signed out.'); return; }
+    const u = user(), was = u.isAdmin;
+    Object.assign(u, { name: r.user.name, role: r.user.role, isAdmin: !!r.user.isAdmin, owner: !!r.user.owner });
+    syncBalance(r.user.balance);
+    if (was !== u.isAdmin) { paintChrome(); paintNav(navNow); }
+  }
+
+  /** The server says we're no longer signed in. */
+  function lostSession(msg) {
+    if (!session) return;
+    leave();
+    session = null;
+    users = {};
+    opQ = []; opBatch = null;
+    paintChrome();
+    route();
+    if (msg) toast(msg, 'err');
+  }
+
   const user = () => (session ? users[session] : null);
   const isAuthed = () => !!session;
   const balance = () => (session ? users[session].balance : 0);
-  /** Re-read accounts from storage (another tab may have changed them). */
-  function refresh() {
-    const all = store.get(LS_USERS, null);
-    if (!all) return;
-    users = all;
-    Object.keys(users).forEach((k) => prep(users[k], k));
-    if (session && !users[session]) session = null;
-  }
+  /** Kept for older callers; the server keeps tabs in step now. */
+  function refresh() {}
 
   /* ---------- balance ---------- */
   let shown = 0;
@@ -251,18 +413,23 @@
     if (!session) return;
     const before = users[session].balance;
     users[session].balance = round2(Math.max(0, v));
-    saveUsers();
     paintBalance(flash);
     if (flash) floatDelta(round2(users[session].balance - before));
     emit('bb:balance');
   }
-  /** Add coins to the balance (rewards, deposits, refunds). */
-  function credit(amount, quiet) { if (amount > 0) setBalance(balance() + amount, quiet ? null : 'up'); }
+  /** Add coins to the balance. reason: daily, rakeback, levelup, deposit, refund or bonus. */
+  function credit(amount, quiet, reason, note) {
+    amount = round2(amount);
+    if (!(amount > 0) || !session) return;
+    queueOp({ k: 'credit', a: amount, r: reason || 'bonus', n: note || '' });
+    setBalance(balance() + amount, quiet ? null : 'up');
+  }
 
   /** Remove coins (withdrawals). Returns false if the balance can't cover it. */
-  function debit(amount) {
+  function debit(amount, reason, note) {
     amount = round2(amount);
     if (!session || !(amount > 0) || amount > balance()) return false;
+    queueOp({ k: 'debit', a: amount, r: reason || 'withdrawal', n: note || '' });
     setBalance(balance() - amount, 'down');
     return true;
   }
@@ -279,6 +446,8 @@
     if (u.limits.daily > 0 && u.day.w + amount > u.limits.daily) { toast('That bet would pass your daily wager limit.', 'err'); return false; }
     if (amount > balance()) { toast('Not enough balance — open the wallet to top up.', 'err'); nudge($('.wallet-btn')); return false; }
     u.day.w = round2(u.day.w + amount);
+    queueOp({ k: 'stake', a: amount });
+    saveUsers();
     setBalance(balance() - amount, 'down');
     sfx('bet');
     emit('bb:placed', { amount });
@@ -287,15 +456,19 @@
 
   /** Credit a payout (stake included). */
   function win(amount, quiet) {
-    if (amount > 0) setBalance(balance() + amount, quiet ? null : 'up');
+    amount = round2(amount);
+    if (!(amount > 0) || !session) return;
+    queueOp({ k: 'pay', a: amount });
+    setBalance(balance() + amount, quiet ? null : 'up');
   }
 
   /** Top the play balance back up to the starting amount. */
   function faucet() {
     if (!session) { openAuth('login'); return false; }
-    if (balance() >= START_BALANCE) { toast('The faucet only tops you up to 100,000.00 — you already have that.', ''); return false; }
+    if (balance() >= START_BALANCE) { toast(`The faucet only tops you up to ${fmt(START_BALANCE)} — you already have that.`, ''); return false; }
     const add = round2(START_BALANCE - balance());
-    pushTx(user(), { type: 'faucet', note: 'Demo faucet', usd: add, status: 'completed' });
+    pushTx(user(), { type: 'faucet', note: 'Faucet top-up', usd: add, status: 'completed' });
+    queueOp({ k: 'credit', a: add, r: 'faucet' });
     setBalance(START_BALANCE, 'up');
     emit('bb:tx');
     toast(`Faucet: +${fmt(add)} play coins.`, 'ok');
@@ -318,7 +491,7 @@
     if (b.payout > 0 && (!s.top || b.mult > s.top.mult)) s.top = { id: b.id, mult: b.mult, t: b.t };
     const fs = BB.fair && BB.fair.state ? BB.fair.state() : null;
     u.hist.unshift({ id: b.id, w: b.wager, m: b.mult, p: b.payout, n: b.nonce || 0, g: fs ? fs.gen || 0 : 0, t: b.t });
-    if (u.hist.length > 200) u.hist.length = 200;
+    if (u.hist.length > 150) u.hist.length = 150;
 
     live.wagered = round2(live.wagered + b.wager);
     live.profit = round2(live.profit + net);
@@ -333,7 +506,7 @@
     while (u.vip.level < target) {
       u.vip.level++;
       const L = LEVELS[u.vip.level];
-      if (L.bonus) { u.balance = round2(u.balance + L.bonus); u.vip.claimed = round2(u.vip.claimed + L.bonus); pushTx(u, { type: 'bonus', note: L.name + ' level-up bonus', usd: L.bonus, status: 'completed' }); }
+      if (L.bonus) { queueOp({ k: 'credit', a: L.bonus, r: 'levelup', n: L.name }); u.balance = round2(u.balance + L.bonus); u.vip.claimed = round2(u.vip.claimed + L.bonus); pushTx(u, { type: 'bonus', note: L.name + ' level-up bonus', usd: L.bonus, status: 'completed' }); }
       pushNote(u, `You reached ${L.name}`, `Rakeback is now ${L.rake}% and your daily bonus is ${fmt(L.daily)}.${L.bonus ? ' ' + fmt(L.bonus) + ' bonus coins were added.' : ''}`, 'vip');
       toast(`Level up: ${L.name}${L.bonus ? ' — +' + fmt(L.bonus) + ' bonus coins' : ''}`, 'ok');
       levelled = true;
@@ -349,7 +522,7 @@
     const row = { game: g ? g.name : gameId, id: gameId, user: who || (u ? (u.prefs.ghost ? 'Hidden' : u.name) : 'guest'), mine: !who, wager, mult, payout, nonce, t: Date.now() };
     bets.unshift(row);
     if (bets.length > 80) bets.pop();
-    if (row.mine && u) track(u, row);
+    if (row.mine && u) { queueOp({ k: 'bet', g: gameId, w: round2(wager), m: Number(mult) || 0, p: round2(payout) }); track(u, row); }
     if (row.mine) {
       // every settled round flashes the edge of the stage; big wins get a shower of coins
       const st = $('#g-stage'), net = payout - wager;
@@ -490,8 +663,8 @@
           <div class="modal-art">
             <div class="modal-art-in">
               <div class="art-coin"><i class="coin xl"></i></div>
-              <h2>100,000<br><span>free play coins</span></h2>
-              <p>House originals. Instant rounds. Zero real money.</p>
+              <h2>${fmt(START_BALANCE).replace(/\.00$/, '')}<br><span>free play coins</span></h2>
+              <p>${order.length} games. Instant rounds. Zero real money.</p>
             </div>
           </div>
           <div class="modal-body">
@@ -499,20 +672,23 @@
               <button type="button" data-tab="login">Log in</button>
               <button type="button" data-tab="register">Register</button>
             </div>
+            ${serverDown ? `<div class="auth-down">${ic('info', 18)}<span>${esc(serverDown)}</span></div>` : ''}
             <form id="f-login" novalidate>
-              <label class="field"><span class="field-l">Email</span><input name="email" type="text" autocomplete="username" placeholder="admin"></label>
-              <label class="field"><span class="field-l">Password</span><input name="pass" type="password" autocomplete="current-password" placeholder="admin"></label>
+              <label class="field"><span class="field-l">Email</span><input name="email" type="email" autocomplete="username" placeholder="you@example.com"></label>
+              <label class="field"><span class="field-l">Password</span><input name="pass" type="password" autocomplete="current-password" placeholder="Your password"></label>
               <div class="form-err"></div>
               <button class="btn primary block lg">Log in</button>
-              <p class="hint">Demo account: email <code>admin</code> · password <code>admin</code></p>
+              <p class="hint">New here? <a href="#" data-goto="register">Create a free account</a></p>
             </form>
             <form id="f-register" novalidate hidden>
-              <label class="field"><span class="field-l">Username</span><input name="name" type="text" autocomplete="nickname" placeholder="highroller" maxlength="16"></label>
-              <label class="field"><span class="field-l">Email</span><input name="email" type="text" autocomplete="username" placeholder="you@example.com"></label>
-              <label class="field"><span class="field-l">Password</span><input name="pass" type="password" autocomplete="new-password" placeholder="At least 4 characters"></label>
+              <label class="field"><span class="field-l">Username</span><input name="name" type="text" autocomplete="nickname" placeholder="highroller" maxlength="16" spellcheck="false"></label>
+              <label class="field"><span class="field-l">Email</span><input name="email" type="email" autocomplete="email" placeholder="you@example.com"></label>
+              <label class="field"><span class="field-l">Password</span><input name="pass" type="password" autocomplete="new-password" placeholder="At least 8 characters"></label>
+              <label class="field" id="f-setup" hidden><span class="field-l">Admin setup key</span><input name="setup" type="password" autocomplete="off" placeholder="From ADMIN_SETUP_KEY in Vercel"></label>
+              <label class="check"><input type="checkbox" name="agree"><span>I'm 18 or older and understand this is a play-money site — nothing can be bought or cashed out.</span></label>
               <div class="form-err"></div>
               <button class="btn primary block lg">Create account</button>
-              <p class="hint">Accounts are fake and stay in this browser only.</p>
+              <p class="hint">Already have an account? <a href="#" data-goto="login">Log in</a></p>
             </form>
           </div>
         </div>
@@ -526,38 +702,52 @@
       setTimeout(() => first && first.focus(), 40);
     };
     $$('.tabs button', m).forEach((b) => b.addEventListener('click', () => setTab(b.dataset.tab)));
+    m.addEventListener('click', (e) => { const g = e.target.closest('[data-goto]'); if (g) { e.preventDefault(); setTab(g.dataset.goto); } });
     const fail = (f, msg, field) => {
       $('.form-err', f).textContent = msg;
       $$('input', f).forEach((i) => i.classList.toggle('bad', i === field));
       if (field) field.focus();
       nudge($('.btn', f));
     };
+    const busy = (f, on, label) => { const b = $('.btn', f); b.disabled = on; b.classList.toggle('loading', on); b.textContent = label; };
 
-    $('#f-login', m).addEventListener('submit', (e) => {
+    $('#f-login', m).addEventListener('submit', async (e) => {
       e.preventDefault();
       const f = e.target;
-      const key = f.email.value.trim().toLowerCase();
-      if (!key) return fail(f, 'Enter your email.', f.email);
+      const email = f.email.value.trim().toLowerCase();
+      if (!email) return fail(f, 'Enter your email.', f.email);
       if (!f.pass.value) return fail(f, 'Enter your password.', f.pass);
-      const u = users[key];
-      if (!u || u.pass !== f.pass.value) return fail(f, 'Wrong email or password.', f.pass);
-      signIn(key);
+      busy(f, true, 'Logging in…');
+      try {
+        const r = await api('POST', 'auth/login', { email, password: f.pass.value });
+        applySettings(r.settings);
+        signIn(r.user);
+      } catch (err) {
+        busy(f, false, 'Log in');
+        fail(f, err.message, err.status === 401 ? f.pass : null);
+      }
     });
 
-    $('#f-register', m).addEventListener('submit', (e) => {
+    $('#f-register', m).addEventListener('submit', async (e) => {
       e.preventDefault();
       const f = e.target;
       const name = f.name.value.trim();
-      const key = f.email.value.trim().toLowerCase();
-      if (name.length < 2) return fail(f, 'Pick a username (2+ characters).', f.name);
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(key)) return fail(f, 'Enter a valid email address.', f.email);
-      if (f.pass.value.length < 4) return fail(f, 'Password needs at least 4 characters.', f.pass);
-      if (users[key]) return fail(f, 'That email is already registered.', f.email);
-      users[key] = { name, pass: f.pass.value, balance: START_BALANCE };
-      prep(users[key], key);
-      welcome(users[key]);
-      saveUsers();
-      signIn(key);
+      const email = f.email.value.trim().toLowerCase();
+      if (!/^[A-Za-z0-9_.-]{2,16}$/.test(name)) return fail(f, 'Usernames are 2–16 letters, numbers, dots, dashes or underscores.', f.name);
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return fail(f, 'Enter a valid email address.', f.email);
+      if (f.pass.value.length < 8) return fail(f, 'Passwords need at least 8 characters.', f.pass);
+      if (!f.agree.checked) return fail(f, 'Please confirm you are 18+ and understand this is play money.', null);
+      busy(f, true, 'Creating account…');
+      try {
+        const r = await api('POST', 'auth/register', { name, email, password: f.pass.value, setupKey: f.setup.value || undefined });
+        applySettings(r.settings);
+        signIn(r.user, r.recovered ? 'recovered' : 'new');
+      } catch (err) {
+        busy(f, false, 'Create account');
+        const d = err.data || {};
+        if (d.code === 'setup_key') { $('#f-setup', m).hidden = false; return fail(f, err.message, f.setup); }
+        fail(f, err.message, d.field ? f[{ name: 'name', email: 'email', password: 'pass', setupKey: 'setup' }[d.field]] : null);
+      }
     });
 
     showModal(m);
@@ -566,49 +756,64 @@
 
   function closeAuth() { hideModal($('#auth')); }
 
-  function signIn(key) {
-    session = key;
+  /** Signed in (or registered): take over the server's account and redraw. */
+  function signIn(su, how) {
+    const u = adopt(su);
+    if (how === 'new' && !u.tx.length) { welcome(u); saveUsers(); }
     since = Date.now();
-    store.set(LS_SESSION, key);
     closeAuth();
     shown = 0;
     paintChrome();
     if (current && current.isGame) { paintNav('g:' + current.id); paintMyBets(); paintFav(); } else { leave(); route(); }
-    toast(`Welcome, ${user().name}. Your balance is play money.`, 'ok');
+    toast(how === 'new' ? `Welcome, ${u.name}! ${fmt(u.balance)} play coins are on the house.` : how === 'recovered' ? 'Owner account recovered — your new password is set.' : `Welcome back, ${u.name}.`, 'ok');
   }
 
-  function signOut() {
+  async function signOut() {
     leave(); // settle or refund any round in progress while the session still exists
+    await Promise.all([drainOps(), pushState()]).catch(() => {});
+    api('POST', 'auth/logout', {}).catch(() => {});
     session = null;
-    store.del(LS_SESSION);
+    users = {};
+    opQ = []; opBatch = null;
     const ls = $('#live-stats');
     if (ls) ls.remove();
     paintChrome();
     route();
   }
 
-  /** Wipe the signed-in account back to a fresh 100,000-coin start (keeps the login). */
-  function resetAccount() {
-    const u = user();
-    if (!u) return;
+  /** Wipe the signed-in account back to a fresh start (keeps the login). */
+  async function resetAccount() {
+    if (!user()) return false;
     leave();
-    ['stats', 'tx', 'hist', 'notes', 'vip', 'day', 'recent', 'favs', 'limits', 'fair'].forEach((k) => { delete u[k]; });
-    u.balance = START_BALANCE;
-    prep(u, session);
-    welcome(u);
-    saveUsers();
+    await drainOps();
+    try {
+      const r = await api('POST', 'me/reset', {});
+      clearTimeout(stateTimer);
+      stateDirty = false;
+      const u = adopt(r.user);
+      welcome(u);
+      saveUsers();
+    } catch (e) { toast(e.message, 'err'); return false; }
     live.profit = 0; live.wagered = 0; live.wins = 0; live.losses = 0; live.pts = [0];
     shown = 0;
     paintChrome();
     emit('bb:balance');
     route();
+    return true;
   }
-  function deleteAccount() {
-    const k = session;
-    if (!k || k === 'admin') return;
-    signOut();
-    delete users[k];
-    saveUsers();
+  /** Permanently delete the signed-in account. Needs the password. */
+  async function deleteAccount(password, alreadyDeleted) {
+    if (!user()) return false;
+    leave();
+    if (!alreadyDeleted) { try { await api('DELETE', 'me', { password }); } catch (e) { toast(e.message, 'err'); return false; } }
+    session = null;
+    users = {};
+    opQ = []; opBatch = null;
+    clearTimeout(stateTimer);
+    stateDirty = false;
+    paintChrome();
+    route();
+    return true;
   }
 
   /* ---------- top bar + sidebar ---------- */
@@ -654,6 +859,7 @@
       ${item('#/account/stats', 'chart', 'Statistics')}
       ${item('#/account/profile', 'gear', 'Settings')}
       ${item('#', 'shield', 'Provably fair', 'data-open="fair"')}
+      ${u.isAdmin ? item('#/admin', 'dash', 'Admin panel') : ''}
       <div class="um-sep"></div>
       ${item('#', 'logout', 'Log out', 'data-open="logout"')}
     </div>`));
@@ -703,33 +909,55 @@
   function paintNavVip() { const el = $('#nav-vip'); if (el) el.innerHTML = navVipHTML(); }
 
   const navClosed = store.get('bb.nav', null) || {};
+  let navNow = '';
+  /* Sidebar in the style of the big crypto casinos: Casino / Slots switch on top, then rounded
+     cards of links. On desktop it can shrink to an icon rail (menu button, remembered). */
   function paintNav(active) {
-    active = active || '';
-    const item = (on, href, icon, label, attr) => `<a class="nav-item${on ? ' on' : ''}" href="${href}"${attr ? ' ' + attr : ''}><i class="ni">${icon}</i>${label}</a>`;
-    const acct = active.indexOf('p:account') === 0, isTx = active === 'p:account/transactions';
-    const group = ([cat, label]) => {
-      const ids = order.filter((id) => games[id].cat === cat), open = !navClosed[cat] || ids.some((id) => active === 'g:' + id);
-      return `<div class="nav-group${open ? '' : ' closed'}">
-        <button type="button" class="nav-h" data-toggle="${cat}" aria-expanded="${open}"><span>${label}</span><small>${ids.length}</small>${ic('caret', 14)}</button>
-        <div class="nav-list">${ids.map((id) => `<a class="nav-item${active === 'g:' + id ? ' on' : ''}" href="#/g/${id}"><i class="ni">${games[id].icon}</i><span class="nav-t">${games[id].name}</span>${games[id].badge ? `<em class="nav-badge ${games[id].badge.toLowerCase()}">${games[id].badge}</em>` : ''}</a>`).join('')}</div></div>`;
-    };
+    active = navNow = active || '';
+    const u = user();
+    const item = (on, href, icon, label, attr, extra) => `<a class="nav-item${on ? ' on' : ''}" href="${href}" title="${label.replace(/&amp;/g, '&')}"${attr ? ' ' + attr : ''}><i class="ni">${icon}</i><span class="nav-t">${label}</span>${extra || ''}</a>`;
+    const acct = active.indexOf('p:account') === 0, sub = active.split('/')[1] || '';
     const ag = active.indexOf('g:') === 0 ? games[active.slice(2)] : null;
-    const top = active.indexOf('p:slots') === 0 || (ag && ag.cat === 'slots') ? 'p:slots' : active === 'p:vip' ? 'p:vip' : active === 'p:lobby/originals' ? 'p:lobby/originals' : active.indexOf('p:account') === 0 ? 'none' : '';
+    const inSlots = active.indexOf('p:slots') === 0 || (ag && ag.cat === 'slots');
+    const group = ([cat, label]) => {
+      const ids = order.filter((id) => games[id].cat === cat);
+      if (!ids.length) return '';
+      const open = !navClosed[cat] || ids.some((id) => active === 'g:' + id);
+      const href = cat === 'slots' ? '#/slots' : '#/lobby/' + cat;
+      return `<div class="nav-group${open ? '' : ' closed'}">
+        <button type="button" class="nav-h" data-toggle="${cat}" data-href="${href}" aria-expanded="${open}" title="${label}"><i class="ni">${CAT_ICONS[cat] || ic('star', 20)}</i><span>${label}</span><small>${ids.length}</small>${ic('caret', 14)}</button>
+        <div class="nav-list">${ids.map((id) => `<a class="nav-item sub${active === 'g:' + id ? ' on' : ''}" href="#/g/${id}" title="${esc(games[id].name)}"><i class="ni">${games[id].icon}</i><span class="nav-t">${games[id].name}</span>${games[id].badge ? `<em class="nav-badge ${games[id].badge.toLowerCase()}">${games[id].badge}</em>` : ''}</a>`).join('')}</div></div>`;
+    };
+    const top = inSlots ? 'p:slots' : active === 'p:vip' ? 'p:vip' : active === 'p:lobby/originals' ? 'p:lobby/originals' : acct || active === 'p:admin' ? 'none' : '';
     $$('.topnav a').forEach((a) => a.classList.toggle('on', a.dataset.k === top));
-    $('#nav').innerHTML =
-      item(!active, '#/', ic('home', 20), 'Lobby') +
-      item(active === 'p:lobby/fav', '#/lobby/fav', ic('star', 20), 'Favourites') +
-      item(active.indexOf('p:slots') === 0, '#/slots', ic('bolt', 20), 'Slots lobby') +
-      (session ? `<a class="nav-vip" id="nav-vip" href="#/vip">${navVipHTML()}</a>` : '') +
-      CATS.map(group).join('') +
-      '<div class="nav-h plain">Account</div>' +
-      item(false, '#', ic('wallet', 20), 'Wallet', 'data-open="wallet"') +
-      item(active === 'p:vip', '#/vip', ic('crown', 20), 'VIP &amp; rewards') +
-      item(isTx, '#/account/transactions', ic('swap', 20), 'Transactions') +
-      item(acct && !isTx, '#/account/profile', ic('gear', 20), 'Settings') +
-      '<div class="nav-h plain">Platform</div>' +
-      item(false, '#', ic('shield', 20), 'Provably fair', 'data-open="fair"') +
-      item(false, '#', ic('sound', 20), 'Music &amp; sound', 'data-open="sound"');
+    $('#nav').innerHTML = `
+      <div class="sb-switch">
+        <a class="sb-pill casino${inSlots ? '' : ' on'}" href="#/"><span>Casino</span></a>
+        <a class="sb-pill slots${inSlots ? ' on' : ''}" href="#/slots"><span>Slots</span></a>
+      </div>
+      <div class="sb-card">
+        ${item(!active, '#/', ic('home', 20), 'Lobby')}
+        ${item(active === 'p:lobby/fav', '#/lobby/fav', ic('star', 20), 'Favourites')}
+        ${item(active === 'p:account/bets', '#/account/bets', ic('clock', 20), 'My bets')}
+        ${item(active === 'p:vip', '#/vip', ic('gift', 20), 'Rewards')}
+      </div>
+      <div class="sb-card">
+        <div class="sb-label">Games</div>
+        ${CATS.map(group).join('')}
+      </div>
+      ${u ? `<a class="nav-vip" id="nav-vip" href="#/vip" title="VIP progress">${navVipHTML()}</a>` : ''}
+      <div class="sb-card">
+        ${item(false, '#', ic('wallet', 20), 'Wallet', 'data-open="wallet"')}
+        ${item(active === 'p:vip', '#/vip', ic('crown', 20), 'VIP Club')}
+        ${item(active === 'p:account/transactions', '#/account/transactions', ic('swap', 20), 'Transactions')}
+        ${item(acct && sub !== 'transactions' && sub !== 'bets' && sub !== 'limits', '#/account/profile', ic('gear', 20), 'Settings')}
+        ${u && u.isAdmin ? item(active.indexOf('p:admin') === 0, '#/admin', ic('dash', 20), 'Admin panel', '', '<em class="nav-badge admin">ADMIN</em>') : ''}
+      </div>
+      <div class="sb-card">
+        ${item(false, '#', ic('shield', 20), 'Provably fair', 'data-open="fair"')}
+        ${item(active === 'p:account/limits', '#/account/limits', ic('pulse', 20), 'Responsible gaming')}
+        ${item(false, '#', ic('sound', 20), 'Music &amp; sound', 'data-open="sound"')}
+      </div>`;
   }
 
   /* ---------- games, pages + router ---------- */
@@ -740,8 +968,15 @@
   let lobby = null;
   let leaveHooks = [];
 
-  const CATS = [['slots', 'Slots'], ['table', 'Table games'], ['instant', 'Instant win'], ['cashout', 'Climb & cash out']];
+  const CATS = [['arcade', 'Arcade'], ['slots', 'Slots'], ['table', 'Table games'], ['instant', 'Instant win'], ['cashout', 'Climb & cash out']];
   const DEFAULT_CAT = { blackjack: 'table', roulette: 'table', crash: 'cashout', mines: 'cashout', towers: 'cashout' };
+  const CAT_ICONS = {
+    arcade: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="7" width="19" height="11" rx="5.5"/><path d="M7.5 10.5v4M5.5 12.5h4"/><circle cx="15.5" cy="11" r=".8" fill="currentColor"/><circle cx="17.5" cy="13.8" r=".8" fill="currentColor"/></svg>',
+    slots: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="15" height="15" rx="3"/><path d="M8 4.5v15M13 4.5v15M21 8v5"/><circle cx="21" cy="6.5" r="1.5"/></svg>',
+    table: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3.5" y="5" width="11" height="15" rx="2" transform="rotate(-10 9 12.5)"/><rect x="10" y="4" width="11" height="15" rx="2"/><path d="M15.5 9l1.8 2.5-1.8 2.5-1.8-2.5z" fill="currentColor"/></svg>',
+    instant: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="4"/><circle cx="9" cy="9" r="1.3" fill="currentColor"/><circle cx="15" cy="15" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/></svg>',
+    cashout: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19l5-6 4 3 7-9"/><path d="M15 7h5v5"/></svg>',
+  };
   function registerGame(g) { g.cat = g.cat || DEFAULT_CAT[g.id] || 'instant'; g.provider = g.provider || 'originals'; g.isGame = true; games[g.id] = g; order.push(g.id); }
   /** The studio behind a game (house originals unless the game says otherwise). */
   function provOf(g) { return (BB.providers && BB.providers[g.provider]) || { name: 'BananaBet Originals', short: 'Originals', color: '#ffc93c', mark: 'B' }; }
@@ -946,7 +1181,7 @@
   }
 
   /* ---------- autobet (games that settle in one press) ---------- */
-  const NO_AUTO = { blackjack: 1, roulette: 1, hilo: 1, crash: 1, mines: 1, towers: 1, pump: 1 };
+  const NO_AUTO = { blackjack: 1, roulette: 1, hilo: 1, crash: 1, mines: 1, towers: 1, pump: 1, snake: 1, cups: 1 };
   let auto = null, lastAmount = null, placed = false;
 
   function autoPaint() {
@@ -1038,7 +1273,7 @@
     view.appendChild(h(`<div class="page"><div class="gate">
       <i class="coin xl"></i><h1>${esc(title)}</h1><p>${esc(text)}</p>
       <div class="gate-btns"><button class="btn primary lg" data-auth="login">Log in</button><button class="btn ghost lg" data-auth="register">Create free account</button></div>
-      <p class="hint">Demo account: email <code>admin</code> · password <code>admin</code></p>
+      <p class="hint">Free to join · ${fmt(START_BALANCE)} play coins to start · no real money</p>
     </div></div>`));
   }
 
@@ -1163,7 +1398,35 @@
   }
 
   /* ---------- boot ---------- */
-  function start() {
+  /** A thin bar under the top bar for the admin's announcement, or a server problem. */
+  function paintAnnounce() {
+    const bar = $('#announce');
+    if (!bar) return;
+    const msg = serverDown || settings.announcement || '';
+    const key = 'bb.ann.' + msg.length + '.' + msg.slice(0, 40);
+    const hidden = !serverDown && store.get(key, false);
+    bar.hidden = !msg || hidden;
+    bar.className = 'announce' + (serverDown ? ' warn' : '');
+    bar.innerHTML = msg ? `<span class="an-ic">${ic(serverDown ? 'info' : 'megaphone', 17)}</span><span class="an-t">${esc(msg)}</span>${serverDown ? '' : '<button type="button" class="an-x" aria-label="Dismiss">&times;</button>'}` : '';
+    document.body.classList.toggle('has-announce', !bar.hidden);
+    document.documentElement.style.setProperty('--ann', bar.hidden ? '0px' : bar.offsetHeight + 'px');
+    const x = $('.an-x', bar);
+    if (x) x.addEventListener('click', () => { store.set(key, true); paintAnnounce(); });
+  }
+
+  /* ---------- boot ---------- */
+  async function start() {
+    document.body.classList.toggle('nav-mini', !!store.get('bb.mini', false));
+    try {
+      const r = await api('GET', 'me');
+      applySettings(r.settings);
+      if (r.user) adopt(r.user);
+      else if (r.banned) setTimeout(() => toast('This account has been suspended. ' + r.banned, 'err'), 400);
+    } catch (e) {
+      serverDown = e.status === 503 ? 'The site is being set up — accounts are offline until the database is connected. You can still browse the games.' : e.network ? "Can't reach the server right now. You can browse, but log in to play once it's back." : 'The server had a problem: ' + e.message;
+      paintAnnounce();
+    }
+    document.body.classList.remove('booting');
     shown = balance(); // no count-up from zero on a plain reload
     paintChrome();
     const half = Math.ceil(order.length / 2);
@@ -1195,6 +1458,8 @@
     $('#nav').addEventListener('click', (e) => {
       const t = e.target.closest('[data-toggle]');
       if (!t) return;
+      // on the icon rail a group header is a shortcut to that part of the lobby
+      if (document.body.classList.contains('nav-mini') && window.innerWidth > 960) { location.hash = t.dataset.href; return; }
       const g = t.parentElement, closed = g.classList.toggle('closed');
       navClosed[t.dataset.toggle] = closed;
       t.setAttribute('aria-expanded', !closed);
@@ -1202,35 +1467,24 @@
     });
     document.addEventListener('bb:bet', (e) => { if (e.detail && e.detail.mine) { paintMyBets(); autoSettled(e.detail); } });
     document.addEventListener('bb:placed', () => { placed = true; });
-    $('#menu-btn').addEventListener('click', () => document.body.classList.toggle('nav-open'));
+    $('#menu-btn').addEventListener('click', () => {
+      if (window.innerWidth <= 960) { document.body.classList.toggle('nav-open'); return; }
+      const mini = document.body.classList.toggle('nav-mini');
+      store.set('bb.mini', mini);
+    });
     $('#scrim').addEventListener('click', () => document.body.classList.remove('nav-open'));
     const snd = $('#snd-btn');
     if (snd) snd.addEventListener('click', closePop, true);
     window.addEventListener('hashchange', route);
-    // Closing or reloading the tab mid-round shouldn't eat the stake.
-    window.addEventListener('pagehide', leave);
-    // Keep several open tabs in step so one can't overwrite the other's balance.
-    window.addEventListener('storage', (e) => {
-      if (e.key === LS_USERS && e.newValue) {
-        try { users = JSON.parse(e.newValue) || users; } catch (err) { return; }
-        Object.keys(users).forEach((k) => prep(users[k], k));
-        if (session && !users[session]) session = null;
-        paintBalance();
-        paintBell();
-        emit('bb:balance');
-        emit('bb:tx');
-      }
-      if (e.key === LS_SESSION) {
-        let s = null;
-        try { s = e.newValue ? JSON.parse(e.newValue) : null; } catch (err) { return; }
-        if (s === session || (s && !users[s])) return;
-        leave();
-        session = s;
-        shown = balance();
-        paintChrome();
-        route();
-      }
+    window.addEventListener('resize', () => { const bar = $('#announce'); if (bar && !bar.hidden) document.documentElement.style.setProperty('--ann', bar.offsetHeight + 'px'); });
+    // Closing or reloading the tab mid-round shouldn't eat the stake: settle it, then send what's queued.
+    window.addEventListener('pagehide', () => { leave(); flushOnExit(); });
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') flushOnExit();
+      else refreshMe();
     });
+    // pick up balance changes made elsewhere (another tab, an admin) and new announcements
+    setInterval(() => { if (document.visibilityState === 'visible') refreshMe(); }, 30000);
     // optional "reality check" reminder (set under Settings → Limits)
     setInterval(() => {
       const u = user();
@@ -1244,9 +1498,11 @@
     start, registerGame, registerPage, setLobby, onLeave, games, order, bets, betRow, history, live,
     placeBet, win, credit, debit, faucet, coins, frame, unframe, logBet, balance, isAuthed, openAuth, signOut, toast, nudge, confetti, showModal, hideModal, confirm: confirmBox,
     user, saveUsers, refresh, addTx, notify, resetAccount, deleteAccount, dayKey, paintChrome, paintBalance, reroute: route, authGate, closePop,
-    isFav, toggleFav, provOf, openSearch, vipInfo, levels: LEVELS, avatars: AVATARS, avatarHTML, icon: ic, START_BALANCE,
+    isFav, toggleFav, provOf, openSearch, vipInfo, levels: LEVELS, avatars: AVATARS, avatarHTML, icon: ic,
+    api, refreshMe, applySettings, settings: () => settings, serverDown: () => serverDown, store,
     fmt, fmtMult, esc, round2, clamp, sleep, rand, randInt, sfx, stamp, ago, copyText, emit, $, $$, h,
     users: () => users, sessionKey: () => session, sessionSince: () => since,
     ui: { amount: amountField, seg: segHTML, bindSeg, setSeg }, cards, cats: CATS,
   };
+  Object.defineProperty(window.BB, 'START_BALANCE', { get: () => START_BALANCE });
 })();
