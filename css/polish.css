@@ -1,0 +1,68 @@
+/* BananaBet — refinements. Loaded last.
+   The look is the original one (gold gradients, round corners, big hero). This file only adds
+   motion that reacts to what happens in a game, plus a few small touches on top of that look. */
+
+/* ---------- small touches ---------- */
+.btn.primary:hover:not(:disabled), .btn.green:hover:not(:disabled) { transform: translateY(-1px); }
+.btn.primary:active:not(:disabled), .btn.green:active:not(:disabled) { transform: translateY(1px) scale(.99); }
+.promo em.ok, .pc-slide em.ok { font-style: normal; font-weight: 700; color: var(--win); }
+.promo span { font-variant-numeric: tabular-nums; }
+.slots-tile .tile-art { inset: 15% 12% 25% 12%; }
+.balance { position: relative; }
+
+/* tiles lean toward the pointer (the lift, glow and shine are the original ones) */
+.tile { transform: perspective(800px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)); transition: transform .22s cubic-bezier(.2, .8, .2, 1), box-shadow .2s; }
+.tile:hover { transform: perspective(800px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)) translateY(-6px); }
+
+/* the hero artwork drifts a little with the pointer */
+.hero-art { transform: translateY(-50%) translate(var(--px, 0px), var(--py, 0px)); transition: transform .35s cubic-bezier(.2, .8, .2, 1); }
+
+/* ---------- motion ---------- */
+/* the balance shows what just happened to it */
+.bal-float { position: absolute; right: 12px; top: 100%; z-index: 5; font-size: 12.5px; font-weight: 700; white-space: nowrap; pointer-events: none; font-variant-numeric: tabular-nums; animation: balFloat 1.05s cubic-bezier(.2, .8, .2, 1) forwards; }
+.bal-float.up { color: var(--win); }
+.bal-float.down { color: var(--muted); }
+@keyframes balFloat { 0% { opacity: 0; transform: translateY(-8px); } 16% { opacity: 1; transform: translateY(2px); } 72% { opacity: 1; } 100% { opacity: 0; transform: translateY(18px); } }
+
+/* every settled round lights the edge of the table */
+.game-stage::after { content: ""; position: absolute; inset: 0; z-index: 4; pointer-events: none; opacity: 0; }
+.game-stage.fx-win::after { box-shadow: inset 0 0 0 2px rgba(47, 224, 138, .85), inset 0 0 90px rgba(47, 224, 138, .26); animation: fxEdge .8s ease-out; }
+.game-stage.fx-lose::after { box-shadow: inset 0 0 0 2px rgba(255, 77, 103, .5), inset 0 0 70px rgba(255, 77, 103, .14); animation: fxEdge .5s ease-out; }
+@keyframes fxEdge { 0% { opacity: 0; } 16% { opacity: 1; } 100% { opacity: 0; } }
+
+/* big wins: coins fall through the table */
+.coin-rain { position: absolute; inset: 0; z-index: 6; overflow: hidden; pointer-events: none; }
+.coin-rain .coin { position: absolute; top: -40px; animation: coinFall 1.5s cubic-bezier(.4, 0, .9, .6) forwards; }
+@keyframes coinFall { 0% { transform: translate(0, 0) rotateY(0); } 100% { transform: translate(var(--sway, 0), 780px) rotateY(1080deg); } }
+
+/* dice and limbo: the number tumbles, then lands with a punch */
+.dc-result.rolling { color: var(--muted); filter: blur(.7px); }
+.dc-marker { transition: left .42s cubic-bezier(.3, 1.35, .5, 1), opacity .15s; }
+.dc-result.won, .dc-result.lost, .lb-num.won, .lb-num.lost { animation: punch .34s cubic-bezier(.2, 1.6, .4, 1); }
+@keyframes punch { 0% { transform: scale(.84); } 60% { transform: scale(1.06); } }
+
+/* mines and towers: tiles flip over instead of popping */
+.mn-tile.open, .tw-tile.safe, .tw-tile.trap { animation: tileFlip .34s cubic-bezier(.2, .9, .3, 1.200); }
+.mn-tile.open.dim, .tw-tile.dim { animation: none; }
+.mn-tile.bomb.boom { animation: boom .5s cubic-bezier(.2, 1.4, .4, 1); }
+@keyframes tileFlip { 0% { transform: perspective(400px) rotateY(88deg) scale(.92); } 100% { transform: none; } }
+@keyframes boom { 0% { transform: scale(.6); } 40% { transform: scale(1.250); } 100% { transform: scale(1); } }
+
+/* slots: reels overshoot and settle; wheel: the pointer ticks against the pegs */
+.vs-reel.land .vs-strip, .sl-reel.land .sl-strip { animation: reelLand .3s cubic-bezier(.3, 1.5, .5, 1); }
+@keyframes reelLand { 0% { transform: translateY(-1.200%); } 55% { transform: translateY(.500%); } 100% { transform: translateY(0); } }
+.wh-pointer { transform-origin: 50% 0; }
+.wh-box.spinning .wh-pointer { animation: whTick .15s ease-in-out infinite; }
+@keyframes whTick { 50% { transform: rotate(-16deg); } }
+
+/* result cards spring in */
+.result-pop { transition: opacity .16s, transform .32s cubic-bezier(.2, 1.7, .4, 1); }
+
+body.calm .bal-float, body.calm .coin-rain, body.calm .game-stage::after { display: none; }
+body.calm .tile, body.calm .hero-art { transition: none; }
+body.calm .tile { transform: none !important; }
+@media (max-width: 680px) { .hero-art { transform: translateY(-50%); } }
+@media (prefers-reduced-motion: reduce) {
+  .bal-float, .coin-rain, .game-stage::after { display: none; }
+  .tile { transform: none !important; }
+}
