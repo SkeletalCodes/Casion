@@ -68,4 +68,24 @@ BB.rules = {
     how: ['Pick a difficulty and place a bet to get a balloon.', 'Every pump inflates it and raises the multiplier.', 'Cash out before it pops. If it pops, the bet is lost.'],
     max: '3,203,384×', risk: 'Difficulty sets how soon a pop is likely: Easy pops on 1 pump in 25, Expert on 10 in 25.',
   },
+  rps: {
+    how: ['Pick rock, paper or scissors (or press 1, 2 or 3), then press Throw.', 'The house throws its hand from your seed pair.', 'Rock beats scissors, scissors beat paper, paper beats rock.', 'A win pays 1.96×. A draw gives your stake back. A loss loses it.'],
+    max: '1.96×', risk: 'Low. You win, draw or lose a third of the time each.',
+  },
+  cups: {
+    how: ['Choose three or five cups and place a bet.', 'The ball goes under a cup and the cups shuffle.', 'Click the cup you think hides the ball. Find it and you win 0.98× the number of cups.', 'Where the ball ends up is set by your seed pair when you bet — the shuffle is just the show.'],
+    max: '4.90×', risk: 'Three cups wins one round in three; five cups wins one in five and pays 4.90×.',
+  },
+  darts: {
+    how: ['Pick a risk level and throw a dart.', 'It lands in the bullseye (2%), treble ring (8%), double ring (10%), inner single (25%), outer single (35%) or misses the board (20%).', 'The table under the button shows what each part of the board pays at your risk level.'],
+    max: '30.00×', risk: 'Low pays something on most throws. High only pays for the double, treble and the 30× bullseye.',
+  },
+  moles: {
+    how: ['Pick between 1 and 5 of the nine holes, or press Auto pick.', 'Press Whack: three moles pop up from three different holes.', 'Each mole that pops from one of your holes is a hit. The pay table under the board shows what every number of hits pays.'],
+    max: '72.75×', risk: 'Fewer holes means fewer hits but bigger prizes — a single hole pays 2.91×, three hits on three holes pays 72.75×.',
+  },
+  snake: {
+    how: ['Pick a difficulty and place a bet.', 'Press Move and the snake heads for the next apple. A golden apple grows the snake and the multiplier.', 'A rotten apple ends the round and the bet is lost.', 'Cash out at any time to take the current multiplier. After 25 apples it cashes out for you.'],
+    max: 'No practical cap', risk: 'Easy apples are golden 90% of the time, Medium 75%, Hard 55% and Expert just 35%.',
+  },
 };

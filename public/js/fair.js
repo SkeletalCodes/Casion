@@ -107,7 +107,7 @@
               <div class="field"><span class="field-l">Server seed (unhashed)</span><input type="text" id="fv-server" spellcheck="false" placeholder="Revealed after you rotate the pair"></div>
               <div class="fair-out" id="fv-out"></div>
             </div>
-            <p class="fair-note">Results come from <code>HMAC-SHA256(serverSeed, clientSeed:nonce:cursor)</code>. The hash shown before you bet is <code>SHA-256(serverSeed)</code>, so the seed can't be swapped afterwards. Demo note: seeds are generated in this browser, not on a server.</p>
+            <p class="fair-note">Results come from <code>HMAC-SHA256(serverSeed, clientSeed:nonce:cursor)</code>. The hash shown before you bet is <code>SHA-256(serverSeed)</code>, so the seed can't be swapped afterwards. Note: seeds are generated in your browser and saved with your account.</p>
           </div>
         </div>
       </div>`);

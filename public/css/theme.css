@@ -1,0 +1,146 @@
+/* BananaBet — purple & gold theme, Stake-style sidebar, announcement bar, auth extras.
+   Loaded after the base stylesheets, so it only overrides what it needs to. */
+:root {
+  --bg: #0c0616;
+  --bg-2: #120a20;
+  --panel: #1a0f2e;
+  --panel-2: #231540;
+  --panel-3: #2f1d55;
+  --line: #2c1c4a;
+  --text: #f3eefc;
+  --muted: #a493c4;
+  --dim: #6f5e94;
+  --accent: #f5c542;
+  --accent-2: #e09b1a;
+  --accent-ink: #241600;
+  --purple: #9b5cff;
+  --purple-2: #6d28d9;
+  --gold-grad: linear-gradient(180deg, #ffe48a 0%, #f5c542 45%, #d9971a 100%);
+  --purple-grad: linear-gradient(135deg, #8b5cf6, #5b21b6);
+  --side: 248px;
+  --side-mini: 76px;
+}
+
+body {
+  background:
+    radial-gradient(1200px 600px at 85% -10%, rgba(139, 92, 246, .16), transparent 60%),
+    radial-gradient(900px 500px at -10% 110%, rgba(245, 197, 66, .06), transparent 60%),
+    var(--bg);
+  background-attachment: fixed;
+}
+code { color: var(--accent); background: rgba(245, 197, 66, .1); }
+::selection { background: rgba(155, 92, 255, .4); }
+.coin { background: radial-gradient(circle at 34% 28%, #fff6c4, #f5c542 46%, #c98a10); }
+
+/* buttons */
+.btn.primary { background: var(--gold-grad); color: var(--accent-ink); box-shadow: 0 10px 26px -10px rgba(245, 180, 40, .75), inset 0 1px 0 rgba(255, 255, 255, .55); }
+.btn.purple { background: var(--purple-grad); color: #fff; box-shadow: 0 10px 26px -10px rgba(139, 92, 246, .8), inset 0 1px 0 rgba(255, 255, 255, .25); }
+.btn.purple:hover:not(:disabled) { filter: brightness(1.1); }
+.btn.ghost { background: #231540; border-color: #3a2766; }
+.btn.ghost:hover:not(:disabled) { background: #2d1b52; border-color: #523a8a; }
+.btn.loading { position: relative; color: transparent !important; }
+.btn.loading::after { content: ""; position: absolute; width: 20px; height: 20px; border-radius: 50%; border: 3px solid rgba(36, 22, 0, .25); border-top-color: var(--accent-ink); animation: spin .7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.refill { background: var(--gold-grad); }
+.avatar { background: linear-gradient(140deg, var(--a1, #ffe48a), var(--a2, #d9971a)); }
+
+/* top bar */
+.topbar { background: rgba(14, 7, 26, .84); border-bottom-color: rgba(155, 92, 255, .18); box-shadow: 0 1px 0 rgba(245, 197, 66, .05), 0 10px 30px -20px rgba(139, 92, 246, .5); }
+.topbar .icon-btn#menu-btn { display: grid; color: var(--muted); }
+.topbar .logo { width: auto; margin-right: 8px; }
+.topbar .logo span { background: linear-gradient(180deg, #fff, #d8ccf2); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.topbar .logo b { background: var(--gold-grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.balance { background: #0a0514; border-color: #35215c; box-shadow: inset 0 0 0 1px rgba(245, 197, 66, .05); }
+.topnav a.on { color: var(--accent); }
+
+/* ---------- sidebar (Stake-style) ---------- */
+.sidebar {
+  width: var(--side); padding: 12px 10px 16px; gap: 8px;
+  background: linear-gradient(180deg, #140a25, #0f0820); border-right: 1px solid rgba(155, 92, 255, .14);
+  scrollbar-width: thin; scrollbar-color: #33215a transparent;
+}
+#nav { display: flex; flex-direction: column; gap: 8px; }
+.sb-switch { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.sb-pill {
+  position: relative; height: 48px; border-radius: 12px; overflow: hidden; display: flex; align-items: center; justify-content: center;
+  font-weight: 800; font-size: 13px; letter-spacing: .1em; text-transform: uppercase; color: #fff; isolation: isolate;
+  border: 1px solid rgba(255, 255, 255, .06); transition: transform .15s, filter .15s, box-shadow .2s;
+}
+.sb-pill::before { content: ""; position: absolute; inset: 0; z-index: -1; opacity: .55; transition: opacity .2s; }
+.sb-pill.casino::before { background: radial-gradient(circle at 80% 20%, #ffe48a, transparent 45%), linear-gradient(135deg, #7c3aed, #3b0f7a); }
+.sb-pill.slots::before { background: radial-gradient(circle at 20% 80%, #ff6ad5, transparent 45%), linear-gradient(135deg, #d9971a, #6b2fb3); }
+.sb-pill::after { content: ""; position: absolute; inset: 0; z-index: -1; background: repeating-linear-gradient(115deg, transparent 0 14px, rgba(255, 255, 255, .05) 14px 16px); }
+.sb-pill:hover { transform: translateY(-1px); }
+.sb-pill.on::before { opacity: 1; }
+.sb-pill.on { box-shadow: 0 8px 24px -10px rgba(155, 92, 255, .9), inset 0 0 0 1px rgba(255, 255, 255, .18); }
+.sb-pill span { text-shadow: 0 1px 6px rgba(0, 0, 0, .45); }
+.sb-card { display: flex; flex-direction: column; gap: 2px; padding: 6px; border-radius: 12px; background: rgba(35, 21, 64, .55); border: 1px solid rgba(155, 92, 255, .1); }
+.sb-label { padding: 8px 10px 4px; font-size: 10.5px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; color: var(--dim); }
+.sidebar .nav-item { height: 40px; padding: 0 10px; border-radius: 9px; gap: 12px; font-size: 14px; color: #c4b6de; }
+.sidebar .nav-item.sub { height: 36px; font-size: 13.5px; padding-left: 14px; }
+.sidebar .nav-item.sub .ni { width: 18px; height: 18px; opacity: .85; }
+.sidebar .nav-item:hover { background: rgba(155, 92, 255, .12); color: #fff; }
+.sidebar .nav-item.on { background: linear-gradient(90deg, rgba(245, 197, 66, .16), rgba(155, 92, 255, .08)); color: #fff; box-shadow: inset 3px 0 0 var(--accent); }
+.sidebar .nav-item.on .ni { color: var(--accent); }
+.sidebar button.nav-h { margin: 0; height: 40px; padding: 0 10px; gap: 12px; border-radius: 9px; font-size: 14px; font-weight: 700; letter-spacing: 0; text-transform: none; color: #c4b6de; }
+.sidebar button.nav-h:hover { background: rgba(155, 92, 255, .12); color: #fff; }
+.sidebar button.nav-h .ni { color: var(--purple); }
+.sidebar button.nav-h small { background: rgba(155, 92, 255, .16); color: #cdb8ff; }
+.nav-group .nav-list { padding: 2px 0 4px 8px; margin-left: 10px; border-left: 1px solid rgba(155, 92, 255, .16); }
+.nav-badge.admin { background: rgba(245, 197, 66, .16); color: var(--accent); }
+.nav-badge.new { background: rgba(155, 92, 255, .2); color: #cdb8ff; }
+.nav-vip { margin: 0; background: linear-gradient(135deg, rgba(245, 197, 66, .12), rgba(139, 92, 246, .12)); border-color: rgba(245, 197, 66, .2); }
+.side-foot { margin-top: 6px; border-top: 0; padding: 10px; border-radius: 12px; background: rgba(35, 21, 64, .35); }
+
+/* icon rail (desktop, menu button) */
+@media (min-width: 961px) {
+  .main, .livecard { transition: margin-left .25s, left .25s; }
+  body.nav-mini { --side: var(--side-mini); }
+  body.nav-mini .sidebar { padding: 12px 8px; overflow-x: hidden; }
+  body.nav-mini .sb-switch { grid-template-columns: 1fr; }
+  body.nav-mini .sb-pill { height: 40px; font-size: 0; }
+  body.nav-mini .sb-pill::after { background: none; }
+  body.nav-mini .sb-pill.casino span::before { content: "♠"; font-size: 18px; }
+  body.nav-mini .sb-pill.slots span::before { content: "7"; font-size: 18px; font-weight: 900; }
+  body.nav-mini .nav-t, body.nav-mini .nav-badge, body.nav-mini .sb-label, body.nav-mini button.nav-h span,
+  body.nav-mini button.nav-h small, body.nav-mini button.nav-h > svg:last-child, body.nav-mini .nav-list, body.nav-mini .nav-vip, body.nav-mini .side-foot { display: none !important; }
+  body.nav-mini .sidebar .nav-item, body.nav-mini .sidebar button.nav-h { justify-content: center; padding: 0; }
+  body.nav-mini .sb-card { padding: 4px; }
+}
+
+/* ---------- announcement bar ---------- */
+.announce {
+  position: fixed; top: var(--top); left: var(--side); right: 0; z-index: 35; display: flex; align-items: center; gap: 10px;
+  min-height: 40px; padding: 8px 16px; font-size: 14px; font-weight: 600; color: #fff;
+  background: linear-gradient(90deg, #5b21b6, #7c3aed 50%, #a16207); box-shadow: 0 8px 24px -12px rgba(124, 58, 237, .8);
+  transition: left .25s;
+}
+.announce.warn { background: linear-gradient(90deg, #7a1d2e, #9a3412); }
+.an-ic { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; background: rgba(255, 255, 255, .16); flex: none; }
+.an-t { flex: 1; min-width: 0; }
+.an-x { width: 28px; height: 28px; border-radius: 8px; font-size: 20px; line-height: 1; color: rgba(255, 255, 255, .8); flex: none; }
+.an-x:hover { background: rgba(255, 255, 255, .14); color: #fff; }
+body.has-announce .main { padding-top: calc(var(--top) + var(--ann, 40px)); }
+@media (max-width: 960px) { .announce { left: 0; } }
+
+/* ---------- auth modal extras ---------- */
+.check { display: flex; gap: 10px; align-items: flex-start; margin: 4px 0 12px; font-size: 13px; color: var(--muted); line-height: 1.45; cursor: pointer; }
+.check input { width: 18px; height: 18px; margin: 1px 0 0; accent-color: var(--accent); flex: none; }
+.auth-down { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 14px; padding: 10px 12px; border-radius: 10px; font-size: 13px; color: #ffd7a8; background: rgba(154, 52, 18, .25); border: 1px solid rgba(255, 140, 60, .3); }
+.modal-art { background: radial-gradient(circle at 30% 20%, rgba(245, 197, 66, .35), transparent 50%), linear-gradient(160deg, #6d28d9, #2a0d5c 70%); }
+.hint a { color: var(--accent); font-weight: 700; }
+
+/* booting: hold the view until we know who is signed in */
+body.booting #view { opacity: 0; }
+#view { transition: opacity .2s; }
+
+/* tiles + lobby touches */
+.tile-badge { background: var(--purple-grad); color: #fff; }
+.tile-badge.hot { background: var(--gold-grad); color: var(--accent-ink); }
+.chip.on { background: rgba(245, 197, 66, .14); border-color: rgba(245, 197, 66, .45); color: var(--accent); }
+.hero-main { background: radial-gradient(700px 400px at 90% 10%, rgba(245, 197, 66, .18), transparent 60%), linear-gradient(135deg, #3b0f7a, #1a0b35 70%); border-color: rgba(155, 92, 255, .25); }
+.hero-main h1 em { background: var(--gold-grad); -webkit-background-clip: text; background-clip: text; color: transparent; font-style: normal; }
+.kicker { color: var(--accent); }
+.game { border-color: rgba(155, 92, 255, .18); box-shadow: 0 30px 80px -40px rgba(91, 33, 182, .6); }
+.game-stage { background: radial-gradient(900px 500px at 50% -10%, #2a1650, #110920 70%); }
+.footer { border-top-color: rgba(155, 92, 255, .14); }
