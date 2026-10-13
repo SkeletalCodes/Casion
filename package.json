@@ -1,0 +1,14 @@
+{
+  "name": "casion",
+  "version": "1.0.0",
+  "private": true,
+  "description": "BananaBet — a play-money casino with a Node + Postgres backend, built for Vercel.",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "dev": "node server/dev.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "pg": "^8.13.1"
+  }
+}
