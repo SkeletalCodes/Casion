@@ -1,11 +1,11 @@
-/* Connect AI — the brain behind the Connect arcade game. Runs in a Web Worker (and in Node for
-   the tests and the opening-book builder).
+/* Connect AI — the brain behind the Connect 4 bot. Runs in a Web Worker (and in Node for the
+   tests and the opening-book builder).
 
    Connect 4 on 7×6 is solved: the engine is an exact solver (Pascal Pons' bitboard negamax with
    a transposition table, null-window score narrowing and "never play a move that loses at once"
    pruning), so it always plays a move that keeps the best possible result. The first few plies
    take too long to solve live, so they come from an opening book built offline with the same
-   solver (tools/connect-book.js → connect-book.js).
+   solver (tools/connect4-book.c + tools/connect4-book.js → connect-book.js).
 
    Connect 5 on 9×7 and Connect 6 on 11×8 are not solved by anyone, so those boards use a deep
    alpha-beta search (iterative deepening, transposition table, forced-move extensions, threat and
@@ -565,13 +565,20 @@
 
   if (typeof module === 'object' && module.exports) module.exports = api;
   else if (typeof importScripts === 'function') {
-    const v = (self.location && self.location.search) || '';
-    try { importScripts('connect-book.js' + v); if (self.CONNECT_BOOK) setBook(self.CONNECT_BOOK); } catch (e) { /* no book: it just thinks longer */ }
+    // in a Web Worker: the book is either bundled in front of this code or sits next to it
+    if (!self.CONNECT_BOOK) {
+      try { importScripts('connect-book.js' + ((self.location && self.location.search) || '')); } catch (e) { /* no book: it just thinks longer */ }
+    }
+    if (self.CONNECT_BOOK) setBook(self.CONNECT_BOOK);
     self.onmessage = (e) => {
       const d = e.data || {};
       let out = null;
       try { out = think(d.variant, d.moves || [], d.opts); } catch (err) { out = null; }
       self.postMessage({ id: d.id, result: out });
     };
+  } else {
+    // a plain page (fallback when workers are unavailable)
+    if (self.CONNECT_BOOK) setBook(self.CONNECT_BOOK);
+    self.ConnectAI = api;
   }
 })();

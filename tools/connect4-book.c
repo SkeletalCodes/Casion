@@ -1,16 +1,16 @@
-/* Opening-book builder for the Connect game's 7×6 Connect 4 bot.
+/* Opening-book builder for the 7×6 Connect 4 bot.
 
-   This is the same solver as public/js/arcade/connect-ai.js (same move order, same table size,
+   This is the same solver as connect-bot/connect-ai.js (same move order, same table size,
    same "keep the result" move choice), in C so the book builds in minutes instead of hours.
    It walks every position the bot can face, for both "bot moves first" and "bot moves second",
    and writes the bot's move for each position the browser would be slow to solve itself.
    A position the browser solves quickly is left out, and so is everything after it.
 
-   Build and run (see "Connect and its bot" in README.md):
+   Build and run (see connect-bot/README.md):
      cc -O2 -o /tmp/c4book tools/connect4-book.c
      /tmp/c4book [maxNodes] [jobs] [item] > /tmp/book.txt
    (with `item`, only that work item is built, its branches in parallel)
-     node tools/connect4-book.js /tmp/book.txt   # writes public/js/arcade/connect-book.js
+     node tools/connect4-book.js /tmp/book.txt   # writes connect-bot/connect-book.js
 
    Output lines: "<key in base 36> <column 0-6>", key = position + mask in Pons' bitboard
    layout, the smaller of the position and its mirror image (the column is for that one). */

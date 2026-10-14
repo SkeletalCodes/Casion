@@ -1,4 +1,4 @@
-/* Turns the output of tools/connect4-book.c into public/js/arcade/connect-book.js.
+/* Turns the output of tools/connect4-book.c into connect-bot/connect-book.js.
    Usage: node tools/connect4-book.js /tmp/book.txt */
 'use strict';
 const fs = require('fs');
@@ -31,6 +31,6 @@ const out = `/* Opening book for the 7×6 Connect 4 bot: ${keys.length} position
   else self.CONNECT_BOOK = book;
 })();
 `;
-const dest = path.join(__dirname, '..', 'public', 'js', 'arcade', 'connect-book.js');
+const dest = path.join(__dirname, '..', 'connect-bot', 'connect-book.js');
 fs.writeFileSync(dest, out);
 console.log(`${keys.length} positions → ${path.relative(process.cwd(), dest)} (${(out.length / 1024).toFixed(1)} KB)`);

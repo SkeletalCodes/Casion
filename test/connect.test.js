@@ -3,8 +3,8 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert');
-const AI = require('../public/js/arcade/connect-ai.js');
-AI.setBook(require('../public/js/arcade/connect-book.js'));
+const AI = require('../connect-bot/connect-ai.js');
+AI.setBook(require('../connect-bot/connect-book.js'));
 
 let seed = 20261014;
 const rand = (m) => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed % m; };

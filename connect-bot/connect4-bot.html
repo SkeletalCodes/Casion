@@ -1,0 +1,915 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Connect 4 Bot</title>
+<meta name="description" content="Play Connect 4, 5 or 6 against an AI bot that plays Connect 4 perfectly.">
+<style>
+  :root {
+    --bg: #0f1424; --panel: #182036; --panel-2: #212b47; --line: #2c3757; --text: #eef1f8; --muted: #95a0bd;
+    --board: #1d4ed8; --board-2: #1e3a8a; --hole: #0b1020; --you: #facc15; --bot: #ef4444; --win: #22c55e; --accent: #facc15;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body { min-height: 100vh; background: radial-gradient(1000px 600px at 50% -10%, #1c2645, var(--bg) 70%); color: var(--text);
+    font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; }
+  .app { max-width: 1120px; margin: 0 auto; padding: 24px 16px 40px; display: grid; grid-template-columns: 300px 1fr; gap: 20px; align-items: start; }
+  header { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; }
+  header h1 { margin: 0; font-size: 26px; letter-spacing: -.01em; }
+  header .dots { display: flex; gap: 4px; }
+  header .dots i { width: 14px; height: 14px; border-radius: 50%; background: var(--you); }
+  header .dots i:nth-child(2n) { background: var(--bot); }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 18px; }
+  .label { font-size: 11.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 0 0 8px; }
+  .field { margin-bottom: 16px; }
+  .seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 4px; padding: 4px; border-radius: 12px; background: var(--hole); border: 1px solid var(--line); }
+  .seg button { min-height: 40px; padding: 5px 4px; border-radius: 9px; color: var(--muted); font-weight: 700; font-size: 14px; line-height: 1.15; }
+  .seg button small { display: block; font-size: 11px; font-weight: 600; opacity: .75; }
+  .seg button.on { background: var(--panel-2); color: var(--text); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06); }
+  .seg button:focus-visible, .cols button:focus-visible, .new:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .record { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 16px; }
+  .record div { padding: 9px 6px; border-radius: 12px; background: var(--hole); border: 1px solid var(--line); text-align: center; }
+  .record small { display: block; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  .record b { font-size: 22px; font-variant-numeric: tabular-nums; }
+  .record .w b { color: var(--you); } .record .l b { color: var(--bot); }
+  .new { width: 100%; height: 48px; border-radius: 12px; background: linear-gradient(180deg, #fde047, #eab308); color: #1a1400; font-weight: 800; font-size: 16px; box-shadow: 0 8px 20px rgba(234, 179, 8, .25); }
+  .new:hover { filter: brightness(1.05); }
+  .note { margin: 14px 0 0; font-size: 13px; color: var(--muted); }
+  .stage { position: relative; display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 18px; min-height: 520px; }
+  .top { width: 100%; display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .say { font-size: 21px; font-weight: 800; }
+  .say.win { color: var(--win); } .say.lose { color: var(--bot); } .say.draw { color: var(--muted); }
+  .say.wait { color: var(--muted); animation: blink 1s ease-in-out infinite; }
+  @keyframes blink { 50% { opacity: .5; } }
+  .meta { font-size: 13px; color: var(--muted); }
+  .meta b { color: var(--text); }
+  .board-wrap { position: relative; width: min(100%, var(--max, 560px)); }
+  .board { display: grid; grid-template-columns: repeat(var(--w), 1fr); gap: clamp(3px, 1vw, 8px); padding: clamp(6px, 1.4vw, 12px); border-radius: 18px;
+    background: linear-gradient(180deg, var(--board), var(--board-2)); box-shadow: 0 24px 50px rgba(0, 0, 0, .45), inset 0 2px 0 rgba(255, 255, 255, .15); }
+  .cell { position: relative; aspect-ratio: 1; border-radius: 50%; background: radial-gradient(circle at 50% 35%, #050814, var(--hole)); box-shadow: inset 0 3px 6px rgba(0, 0, 0, .7); }
+  .cell b { position: absolute; inset: 5%; border-radius: 50%; opacity: 0; transform: scale(.6); transition: opacity .15s, transform .15s; }
+  .cell.you b, .cell.bot b, .cell.ghost b { opacity: 1; transform: none; }
+  .cell.you b { background: radial-gradient(circle at 38% 32%, #fff7c2, var(--you) 45%, #b8860b); box-shadow: inset 0 -3px 0 rgba(0, 0, 0, .2), 0 2px 6px rgba(0, 0, 0, .4); }
+  .cell.bot b { background: radial-gradient(circle at 38% 32%, #ffc9c9, var(--bot) 45%, #991b1b); box-shadow: inset 0 -3px 0 rgba(0, 0, 0, .2), 0 2px 6px rgba(0, 0, 0, .4); }
+  .cell.ghost:not(.you):not(.bot) b { background: var(--you); opacity: .3; }
+  .cell.drop b { animation: drop calc(.16s + var(--fall) * .045s) cubic-bezier(.5, 0, .9, .55); z-index: 2; }
+  @keyframes drop { from { transform: translateY(calc(var(--fall) * -112%)); } 80% { transform: translateY(0); } 90% { transform: translateY(-7%); } to { transform: translateY(0); } }
+  .cell.last b::after { content: ''; position: absolute; inset: 34%; border-radius: 50%; background: rgba(255, 255, 255, .45); }
+  .board.done .cell:not(.won) b { filter: saturate(.5) brightness(.7); }
+  .cell.won b { animation: won .9s ease-in-out infinite; }
+  @keyframes won { 50% { box-shadow: 0 0 0 4px #fff, 0 0 24px 6px rgba(255, 255, 255, .55); } }
+  .cols { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(var(--w), 1fr); padding: 0 clamp(6px, 1.4vw, 12px); }
+  .cols button { border-radius: 12px; cursor: default; }
+  .mine .cols button:not(:disabled) { cursor: pointer; }
+  .mine .cols button:not(:disabled):hover { background: rgba(255, 255, 255, .07); }
+  .legend { display: flex; gap: 18px; font-size: 13px; color: var(--muted); font-weight: 700; }
+  .legend span { display: flex; align-items: center; gap: 7px; }
+  .legend i { width: 14px; height: 14px; border-radius: 50%; background: var(--you); }
+  .legend i.bot { background: var(--bot); }
+  .pop { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) scale(.8); opacity: 0; pointer-events: none; z-index: 5;
+    padding: 16px 30px; border-radius: 16px; text-align: center; background: rgba(10, 14, 28, .94); border: 2px solid var(--win);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, .6); transition: opacity .18s, transform .25s cubic-bezier(.2, 1.4, .4, 1); }
+  .pop.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  .pop b { display: block; font-size: 32px; color: var(--win); }
+  .pop.bad { border-color: var(--bot); } .pop.bad b { color: var(--bot); }
+  .pop.push { border-color: var(--muted); } .pop.push b { color: var(--text); }
+  @media (max-width: 820px) {
+    .app { grid-template-columns: 1fr; }
+    header { order: -2; }
+    .stage { order: -1; min-height: 0; padding: 14px 10px; }
+    .say { font-size: 18px; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header><span class="dots" aria-hidden="true"><i></i><i></i><i></i><i></i></span><h1>Connect 4 Bot</h1></header>
+
+  <section class="panel" aria-label="Settings">
+    <div class="field"><p class="label">Game</p>
+      <div class="seg" id="mode">
+        <button type="button" data-v="c4" class="on">Connect 4<small>7×6</small></button>
+        <button type="button" data-v="c5">Connect 5<small>9×7</small></button>
+        <button type="button" data-v="c6">Connect 6<small>11×8</small></button>
+      </div></div>
+    <div class="field"><p class="label">First move</p>
+      <div class="seg" id="first">
+        <button type="button" data-v="you" class="on">You start</button>
+        <button type="button" data-v="bot">Bot starts</button>
+      </div></div>
+    <div class="record">
+      <div class="w"><small>You won</small><b id="rw">0</b></div>
+      <div><small>Draws</small><b id="rd">0</b></div>
+      <div class="l"><small>Bot won</small><b id="rl">0</b></div>
+    </div>
+    <button type="button" class="new" id="new">New game</button>
+    <p class="note" id="note"></p>
+  </section>
+
+  <section class="panel stage" aria-label="Board">
+    <div class="top"><span class="say" id="say" aria-live="polite"></span><span class="meta"><b id="k">4</b> in a row · move <b id="mv">0</b></span></div>
+    <div class="board-wrap" id="wrap">
+      <div class="board" id="board"></div>
+      <div class="cols" id="cols"></div>
+    </div>
+    <div class="legend"><span><i></i>You</span><span><i class="bot"></i>Bot</span></div>
+    <div class="pop" id="pop"></div>
+  </section>
+</div>
+
+<!-- The bot. These run in a Web Worker (built from this text), so the page never freezes while it thinks. -->
+<script type="text/plain" id="book-src">/* Opening book for the 7×6 Connect 4 bot: 1807 positions. Generated by
+   tools/connect4-book.c + tools/connect4-book.js; do not edit by hand. Each entry is a position key
+   (base 36, see C4.bookKey in connect-ai.js) followed by the column the bot plays (0-6). */
+(function () {
+  'use strict';
+  const book = {};
+  '03,13,3k2,cn43,pdt3,pkw1,qdd3,r5s2,1eo02,1fnk2,3kao2,47sx3,48003,48sh3,49kw3,70xs1,71c11,71q83,71xc2,724j2,72wx2,cnls1,coe91,cp6o0,esu84,iagx2,ibgj3,18y683,19nk03,19ojk3,1b3wg3,1d5z43,1fzi83,1r9mp5,2hwch3,2hwcj3,2hwg01,2hwg13,2hwu92,2hx8g3,2i8zk5,2i8zl3,2i9343,2i9hc4,2ilqb3,2ilxd1,2im4j2,2impv3,2ini93,2iy9s2,2jb0h3,2jbep2,2jc012,2lrep3,2lri83,2m4jn2,2m4xt3,2m5xd3,2m7i83,2okjk3,2oxa93,2oxhc3,2oxoh2,2oy2p3,2oyv43,2oz283,2ukcg3,306831,306m93,4zsow3,4zsox3,4zt6o3,505c03,50i2p3,50igx3,50j292,51x1f3,53c752,53nr43,540ht2,540ow3,56uf40,56uf82,5i2kh3,68qv53,68qyo2,693i84,69g8x3,69gg03,69h8h3,69i0w3,6a5j43,6cyo13,6cyv43,6frsw3,6fslc1,7hp1j0,7hp4z3,7hpc13,7i1oh3,7i1oj3,7i1s13,7i1z43,7iqyp3,7ki9t3,b8jk03,b98xs3,b99xc3,bapa83,bcrcw3,chhq93,chhqb3,chhqv3,chhtt3,chim83,chudd3,chugw3,ci7433,ciwe92,clcsh3,clcw03,clrb53,clsw01,co5xc3,coio12,eze2p3,eze683,eze693,ezekh3,ezeyo3,ezqps3,ezqpt3,ezr7k3,f0g003,f0sqp3,f1itf3,g8c8z3,g8cch2,gb5hc3,oyzgg3,oyzgh3,oyzy83,ozc3k3,ozou91,ozp8h3,ozp8j3,ozpmp1,ozr7n3,ozssh3,p0eip3,p0ght3,p13sz3,p2uio3,q7xmp4,q8mwz3,q8n0h3,q8n7k3,q8o016,q8osg3,q9c753,q9cao3,rgvwj3,rgw3l4,rh8g13,rh8g33,rh8jl3,rh8qo3,rhxq93,rjp1d1,rmikh2,v7qbl3,v7qf42,v82yo4,v8fpd3,v8fwg1,v94zk2,v95z43,vby4h3,ver9c3,wgohv3,wgohz0,wgold3,wgolf3,wgosh4,wgpdt3,wh14x3,wh14z3,wh15j3,wh18h3,wh1fk1,whqf52,whqio2,wi35v2,wkjk33,wkjnl3,wncox3,wsyyo3,yzmrk3,18yw015,18yxz51,18zqf50,18zqfd6,1biw753,1f6x343,1f7mgw2,1f7ngg2,1f911d3,1f918g1,1f92tc1,1fafls2,1gfv9d4,1gfv9f4,1gfv9z4,1gfvcx3,1gg7wh2,1gg8003,1gg8zk3,1gjqbl2,1gmjgg2,1gxs010,1ixrlt2,1ixrpc3,1ixrpd3,1ixs3l3,1ixshs3,1iy48w2,1iy48x3,1iy4qo3,1iygzl3,1iytj43,1izitd3,1iziww2,1j0xds6,1k6ps33,1k9j0g3,1sxczl2,1sxczn3,1sxd341,1sxd351,1sxdhd3,1sxdhf3,1sxdvk1,1sxdvl3,1sxfgh3,1sxh1c5,1sxpmo2,1sxpmp3,1sxpq81,1sxq4g3,1sxqio3,1sxs3k3,1sy29v3,1sy2dd1,1sy2rn3,1sy2rr0,1sy35t1,1sy35v2,1sy36f3,1sy4qr3,1sy4qv0,1sy6bl5,1syeww3,1syrk12,1sys1t3,1sysg13,1syu0x3,1sz4753,1sz4ao3,1szhqb1,1szjbb0,1szkw35,1szkwn5,1t0irk2,1t0vwj2,1t1ksh2,1t651d3,1tbrb45,1u70g70,1u70jn3,1u70k73,1u70qp6,1u714w1,1u72bl6,1u72pt6,1u73wg3,1vf9mr2,1vfm9t5,1vfmo01,1vfo8x5,1vhptt2,1z63ur5,1z63y92,1z6ght1,1z6goz4,1z6gw13,1z6t8j3,1z6tfl1,1z7iip2,1zd4sh3,20f2130,20f24j3,20f2533,20f2bl4,20feo32,20ferl2,20g3y92,20ix372,20ix6p2,20lq813,2kw5j42,2wvqio2,2wvqip5,2wvr0g4,2wvr0h2,2wvszk4,2ww35s5,2ww3nk2,2wwfwg5,2wwgap2,2wwgar2,2wwgox1,2wwi9t2,2wx5kx1,2wxim81,2wxv9d1,2y5e9s4,334hdt2,3356o30,335vy92,335vyj2,33bi815,36wdts5,3n3o5d1,3n3o8w2,3n3ocj0,3n3ocz5,3n3ojl1,3n3ojv1,3n3pc32,3n3q4h1,3n3q4r1,3n3wg14,3n40sg1,3n40zl4,3n416o1,3n41z52,3n42rk1,3n4dq81,3n4fb42,3n4q9s2,3ocmm91,3ocz9c1,3quirl2,3quiyo6,3qujk14,3quveo4,3qxog14,40u41z0,40u45f1,40u4jn2,40u4xt1,40u4xv4,40u5q94,40u6ir2,40u83l1,40uh6p2,40uhkw1,40ukqo5,40utc70,40utfn1,40uttz0,40uu831,40uu8n1,40uvt30,40vji91,40vv9f2,40vw5d1,423rlz0,423rsz5,423rtj5,423uyp6,48bt6v0,48o3k15,4fu7i82,4fu8hs2,4fvm2p2,4fvm9s2,4fvn293,4fvnuo2,4fx0n42,4fx1mo2,4fxpxc2,4fxqww2,4g0jgg4,4g0k8x2,4g18ch4,4g18jk4,4g2mwx2,4g2n401,4g2oow2,4g66io4,4g896o2,4g8a682,4g8zgg4,4gbslc4,4gbssj4,4gbtkx4,4gdvgj2,4gdvnl1,4guqgw1,4h4k8w3,4h4l8g3,4hbl343,4hkqyp4,4ibegx3,4ibekg3,4ibeo11,4ibev40,4ibeyo3,4ibf2b4,4ibfgh3,4ibr403,4ibrb43,4ibria4,4ic3up4,4ic4u93,4if9j43,4ifmo12,4iig743,4itoch4,4ktb0g3,4ktbep3,4l0cjm4,4m2y9t3,4m2ydc3,4m2zcw3,4m3nk03,4m9abk3,4m9cao4,4nb75v3,4nb79d3,4nb7gg3,4nb7nl3,4nb81s3,4nb85f3,4nbjsx3,4nbjwg3,4nbybl3,4r2qyo3,4sazup3,4sazy83,4sb0cg3,4sb0u93,4sbchs3,4sbcow3,4seuww3,4usw753,4uswe93,4uswlc3,4uswow3,4usx6p3,4ut91c3,4w4ni83,54shs03,54si693,54t7cx3,56251d3,56254w3,56264g3,562ubk3,57adxf3,57ae0x3,57ae803,57aef53,57aetc3,57aewz3,57aqkh3,57aqo03,57b5356,5b1xq93,5b1xts3,5b2n0g2,5b5g5d3,5b89a85,5ca6m93,5ca6mb3,5ca6mv3,5ca6pt3,5ca6ww1,5ca7413,5ca7lv4,5ca8e93,5caj9d3,5cajcw3,5cajgh3,5cajnk3,5cb8jk2,5cb8qo3,5cgutc3,5osj9d2,5v14hs2,5v3xmo2,5v4mww2,5w9ddt3,5w9dhc3,5w9dvk1,5w9egw3,5w9fgg0,5w9q0w2,5w9q805,5wd8g02,5yr9q93,5yr9xd4,5yra4g4,5yra803,5yrz0h4,60311c3,68qv413,68qv7k4,68qvb54,68qvi84,68qvls4,68qvlt3,68qvpf4,68qw3l1,68qxkw4,68r7r43,68rke94,68rla91,68rmv52,6a0jnl6,6b8rk33,6b8rr56,6b8ryb3,6b8s5c1,6b8sch3,6b8tq96,6b94753,6b94e83,6b96dc3,6ezlz52,6f10jl2,6g8k5f4,6g8k5j0,6g8k5z4,6g8k8x3,6g8kg11,6g8wsh3,6g8wzn3,6g9m9t3,7cp8u84,7cp8u91,7cp91c0,7cp9mp1,7cpxxc4,7dzlds5,7f75352,7f7ukh6,82x6gx5,82x6h75,82x7gh2,82xbep2,82xj405,82xk3k5,82xo1s5,82xxj51,8464qo1,8466bk1,86o0w02,882l8g2,88dts15,8gnm9t1,8gnmo14,8gnn294,8j5vgh6,8j5vuo1,8o5bi91,8y5z0g2,8y8s5d2,8ybla82,8ymttt2,90n62o3,91w3r51,91w3uo0,91w3us3,91w41u3,91wt1c3,91wt4y3,91wt8h3,96vwjm3,96vwn53,9bwef51,9kmcu83,9luxvn3,9luxz52,9lvaip1,9lvngh6,9lvzsw2,9lvzwi3,9qv37l1,9qv3b40,9qv3b83,9qv3ia1,9qv3lt3,9qvshs2,a5u4n54,aaua2q4,aaua693,aaub2a4,aaxse83,ac2vlt4,ac385d6,aokqdd3,aokqrk1,aoksch3,aoktxc5,aolhmo2,aw2f7l3,bsirnk4,bsj3wg4,bsj5vk2,cwhhtt4,dbimbk4,dbinb44,dbpn5s4,dbqcg03,dc0vpd4,dchqio4,ddyeww4,ddyfb54,dgq54w1,diy7ep3,diy7i83,diy7wg3,diy8e93,dqfwn43,e2xe693,e2xe9s4,e2xeo03,e2xf5t3,e7x6v54,e7x6yo4,e7x7cw3,e7x7up4,e7xjpc4,ery4u84,f4dvk00,f4dvy94,f4dxxd1,fbvke94,fbvkeb4,fbvkht4,fbvkw14,fbvxfk4,g8c9hd6,gzt4ox4,gzt4sg4,hcamio4,hts9z43,hxj43m3,i3rvcw3,i7iphc0,ihhy4h3,ihiav63,imi3k24,imi3nl4,jk7qm84,jk7slc2,jlgoe80,ko5thc4,m7ajy91,m7akcg3,m7akqr2,m7alj52,m7b91d4,m7b9fk1,m7bb0h4,m7bclc2,m7g6801,m7g7sw0,m7gv413,m7gvb44,m7gxa84,m7izy93,m8ji4g3,m8jiwx2,m8ur9c3,m9lfk70,m9lfl34,m9lfyb4,m9lfyv3,m9ls042,m9lsea1,m9ltz82,m9m4jl1,m9mhaa0,m9mhai4,m9mhom1,m9mj9e0,m9mtmp3,m9nvuu2,mc3bwj3,mc3oci3,mc40ox3,mcad1c0,mdjb7k2,mm4bcx3,mw2io33,mw37gh1,nq1a814,nq1abk3,nq1am94,o00vlt4,o00vpc3,o00vpd4,o00vwg4,o00w3l3,p3z98g4,pxy1dt4,q7xmrl4,q7xmyo4,s24akg0,s24arm1,wy5s754,wy5sow4,wy5t6p4,13ykkg04,13yl9c12,13yl9j46,13ylbi86,140vg1v1,140vg2f4,140vhmr0,140vshu2,140vugy1,140whs62,140wjra1,141dpc14,144tbb44,145v95j4,14dcxs33,14ddmkh3,14nd8ch3,15hbawx1,15raw741,15rawap4,15rawhs4,15rawlc3,15rawld3,15rbldt4,17z7n9c1,19oe5mp1,1cu2nb52,1cu2ni82,1cu2p344,1cu41vk2,1cu42v42,1cu89kx1,1cu89s05,1cu9o5d2,1cufaf42,1cwifpd3,1cwifsw3,1cwifwh1,1cwig3k2,1cwigar4,1cwigox3,1cwisjk3,1cwisxt3,1cwj5dt2,1cz0c8w3,1cz0cn53,1d6i1353,1d6i16o3,1d6i22p3,1d6idxc3,1d6iebl3,1d8zxmp1,1d8zyf53,1dizj0g4,1dp8yyp3,1dqh7ur3,1dqh7y93,1dqh8ub0,1dqhkox3,1dqhkw03,1dqi9z43,1eagem93,1eageps3,1eagrgg5,1eagrup5,1emxwg03,1eufldv2,1gid5oj0,1guunpc0,1i524g11,1j2rs002,2ccmoao2,2ccsakg5,2cctp4w2,2cdlshs4,2cf2gw03,2cf2ha93,2cp229s3,2cp22o13,2d918u93,2d9191d3,2d9198g3,2d91log3,2dt0fsw5,2eczmdd4,2eczmkj4,2eczmrl3,2g0x6o14,2g0x6ob4,2hnm5ts1,2i7lce86,2o53b7k5,331zi1z4,331zifr3,334hedz4,34sey2p4,34sey684,4ca5b0g3,4de3ojl5,4de416o5,520soe83,5233k0n0,523lta91,5283d3r6,53tj08x1,5ayqk8z2,6bv8jk13,72un24h1,8bgbshs3,fs8x56o2,fs8x6682,fs8yjr53,fs8yjy82,fs8ylj43,fs8zybk2,fs8zzb42,fs90nls3,fs90olc3,fs93h4w3,fs946802,fs95kld2,fs95ksg1,fs95lkx3,fs95mdc2,fs9b6v42,fs9b7uo3,fs9ferl3,fs9ff5s1,fs9fgqp3,fs9fibk3,fs9gt4z4,fs9gtc11,fs9s1oh4,fs9xny94,fs9xo5c1,fsa7iww3,fsaejr43,fsbec5d3,fsbecn43,fsbf1j53,fsbf1xd2,fsbf2ip3,fsbijy93,fsbikch2,fsbilq83,fsbldvk3,fsbtsw12,fsbwm0x1,fsbwnlt5,fsbxbi91,fsdycg13,fsdycu93,fse0gao2,fse39ts3,fse3a822,fse5e9t2,fse62kh3,fsebou82,fsef9fl0,fsefb0g2,fsf5w1s3,fsf5x1c3,fsf8q682,fsge4ub3,fsge4xt3,fsge5q83,fsgehhd3,fsgehkw3,fsgeuf53,fsk74ao3,fsldxj53,fsldy0w3,fslemwx3,fsli5c13,fsli7405,fsnvtvl3,fsnvudc3,fsnwjnl3,fsnzcsh3,fsxw51d5,fsxw70h5,fsxxj7l2,fsxxjlt2,fsy35hd2,fsy59c12,fsyrqf51,fsz52tc3,fsz53sw3,ft0dblv3,ft0dbpd3,ft0dchs3,ft0do8x3,ft0docg3,ft0e16p3,ft44vi83,ft5d4ap3,ft5d4ar3,ft5d4bb3,ft5d4e93,ft5d4sh3,ft5dgxt3,ft5dh1c3,ft5dtvl1,ft5eiyp2,ft5gzcx3,ft7v0qo3,fthvgxt5,ftpcb293,ftpcbk01,ftpccch1,ftpcd4w5,ftpe29t3,ftru7ep3,ftru7wg3,ftruwox3,ftrux6p2,fu1tssh5,fu1tta85,fu1tta91,fu1tv9c5,fu1u5xc5,fu1ui2p5,fu1uikh1,fu1uikj2,fu1ukjl1,fu1um4h5,fu1v7up2,fu1vk013,fu1vk3k2,fu1y0ht5,fu4bpfl3,fu4c22o3,fu4jrwh5,fu82jnl2,fu838xv0,fu83y812,fu83y8b0,fu89kht6,fu9bhtv3,fu9bhtz0,fu9bhuf3,fu9bhxd3,fu9bi4h1,fu9bibn3,fu9bugx3,fu9cjr52,fv5sw3l1,fv5wqrk2,fvfrrsw2,fvw045d4,fvw045n4,fvw054x4,fvw09354,fvw0hs04,fvx924j0,fvx924z1,fvx92814,fvx9erl2,fvzqygx4,fvzqykg1,fvzqyyp4,fvzqzcw4,fw9qjur5,fw9qkch1,fw9qkcj1,fw9qkqp5,fw9qmbl5,fw9qwht2,fw9qwzk1,fw9qxds5,fw9qyyo2,fw9r94z1,fw9r95j1,fw9r9mr1,fw9rywx5,fw9s0w15,fwc8gw11,fwh88w70,fwh88zn1,fwh896p4,fwos1vk2,fwos2v42,fwoxo5c4,fwoxp4w4,fwoz2ps6,fwp8ww04,fwpab9d6,fwpr62o6,fwr7ugw3,fwr7uv53,fwrevls4,fww7myp3,fww7n5t3,fww7ngg3,fww7ny93,fx17fuo3,fx17g8x3,fxg6tq93,fxg6txd3,fxg6u803,fxg6upt3,fxl6mf53,fxl6mm93,fxl6mtc3,fxl6n0j3,fxl6z9c3,fy55tds4,fy55ts15,fyhnb404,fyk57k03,fyp4zy93,fyp505f3,fyp50ch3,fzllon45,fzllp1d5,g0d2k8x4,g0pk1z54,g0x1r0j4,g14jg1t4,g15koe91,g171pj42,g19l0g02,g1as6wx3,g1urdoh3,g1w0c5d3,g1zr6dd3,g2104u91,g2kzbb54,g2xh6684,g2xh85c4,g41f7284,g4rn4751,g4rn4ld1,g4vdytd4,g55dkzn5,g6gtmv44,g6gtn9d4,g7ks0e94,g9sor9d4,ga17og14,ga2q4cg2,geg6zr43,geg7on53,geg7ou83,geihvcz4,geihvdj4,geii7sy4,geiix3a4,gel6sg02,gel7hj44,gf4znnl3,gfwftvl4,gfwfu2o2,gggf0g33,givtgjn3,givtgn53,givtgu84,givtt6p4,givxblt4,givxbpc3,giybcw70,gj0t98j3,gj0t9933,gj0t9c13,gjasumf0,gjksg033,gjksg0n3,gjksg3l4,gw7hp4w3,gw7sxvk4,gw9rxfv4,gw9vqpy4,gwchhts1,gxnpudc2,h0n3h1d4,h0plddv3,h2g0u0z5,h4dxzsx1,h55evpc3,h55ew3l3,h55gznk4,h5feh343,h5fehhd3,h5zdnup3,h5zdo8z3,h73c16p3,h73cqgz2,h9iqha93,h9l8dmr4,h9l8dq93,h9l8q9t3,h9nq9z53,h9oz85d3,h9v8bnl3,ha7pgqp3,hady7lt3,i93sem93,i9ds0013,i9xr6rn5,iahqdj50,ihwxitc1,ihwxv5t2,ihwz9qb3,ihwza0w3,ihx0oap3,ihx1dkx1,ii20gzl5,iilwi2p0,iilwi2x4,iilwupx3,ikttls50,ivavxuf4,izo7j0j3,izo7j412,izo7jb45,izo7vnl1,izo7vr84,izo7vya2,izo7w1t2,izo88eb4,izo88ld2,izo8l1e2,izo8l4x2,izo8xoh2,izobe2p4,izobe6c4,izoe7b64,izoejy94,izpgh6p3,j8ouc1t4,khn0k1x3,kjuxb450,kypbkzl3,kypbxqa4,kypcadd4,kypfssh4,l7nghkz4,mxqgccn0,mxqgozo2,mxqmb5t5,r4tajy95,sutrszl2,vkkb4ld3,vkken0h3,vkuapz53,vkue8e93,vkwsmbl3,vle9wqr3,vle9wu93,vle9x1c3,vleam0x3,vledf5v3,vledf9d3,vleg8ap3,vly93i91,vly93pf1,vly93wh1,vly94oz3,vly95hd6,vly9szl2,vlyaidc4,vlyclxd1,vlycmbl1,vlycnwh6,vm0qzup3,vmaql8h3,vmgyzgn0,vmgyzhj3,vmgyzk32,vmgzc3n1,vmgzc471,vmgzcav0,vmgzchv2,vmi8akh3,vmi8zk32,vmi8znl2,vmibssj2,vmik83l3,vn27h8h2,vn28w015,vneoyrl2,vneoznk1,vneqdfl1,vnkxczn5,vnkxd075,vo4wjz75,vo4wk5v1,vo4wlqr1,voince91,voind6p1,voio1kx0,voio1l50,vpt14w15,vpu3ev53,vpu6xa93,vqe2ltt2,vqe2m0w1,vqe2mtd3,vqe3b402,vqe40ld1,vqy2hoh3,vrui48x4,vskq1vl5,vskq29t1,vskq3up1,vskqeww1,vskqghs1,zxvwk5f2,1bcqygld2,1bcqyh6o5,1bcr8adc1,1bcr9oqp1,1bcte9341,1bcy70g13,1bcy7ptt3,1bcy7qtd3,1bdi677l2,1bdi6wld3,1bdi6xkx6,1bdn5zwh5,1bdn6pa95,1bem4kqr3,1bem4ku93,1bem5abl6,1bepw4jl5,1ber4dfl3,1ber4dfn5,1ber4q2p5,1bgf1xq95,1bgf1xqj5,1bgu1c3l6,1bgu1e2p6,1bgz14hv5,1bgz14ld4,1bi2zim93,1bj1y2v51,1bj1y39d6,1bj6xvk11,1bj6xvr53,1bleumm92,1bngimtd1,1bngin7l6,1bnhrla96,1bnlifi95,1bp9g00b5,1c0e9erl1,1c2m5gch4,1c3dmc5d4,1cyiv4ea4,1czwsqgx1,1e2eqe4h4,1e2eqf7k3,1e2es5c14,1e2etjwk4,1e2etk024,1ek60em95,1ek60rcy2,1ek649s24,1ek8iayr5,1ekc95hd5,1g1fxlvm5,1i0gyupt2,1i0h1nup2,1ofbldvl5,1r5w2sch3,1r5w6arl3,1r6g1zb54,1r6yrv2b5,1r6yrv2v5,1r6ys7wj1,1r6ys7x31,1r6yskg31,1r7015vn2,1r701v5t2,1r8mpfkj5,1r8mpgk35,1r96om5j5,1ravvif45,1rd2ixoh1,1rd2ixor5,1rd2iyo15,1rd2jbb45,1vidpfr51,26xb03cx3,26xfzw1v3,26xkzoqp3,26xnhl353,26xxhwn53,26xxhzsx3,26xxini93,26xzz2tf3,26y4yvib3,26y4yvlt3,26y4z85d3,26yhh30h1,26yhh4zl1,26yoy29t2,26yoy4ch5,26yoyrnl5,26yrfym93,26z1fk014,26z1fk033,26z1fk3l1,26z1fkht3,26z1fkw01,26z1fkw13,26z1fmgx3,26z1fo1s5,26z1fwn53,26z1fx4w3,26z1fxj43,26z1g9ab3,26z1g9dt1,26z1g9s33,26z1ga691,26z1gdc15,26z1gykh3,26z1gz293,26z3xgcn0,2705dxj52,2705dy0w2,2705dy0x2,2705e0002,2705emtd4,2705emwx1,2705enpc1,2705enpd1,2705fc3l1,270zcps14,2719cbk32,2719cby91,2719ccqp4,2719cf411,2719colc1,2719d0g31,2719d18j1,2719dpq91,2719dqip1,271quarl4,271vte693,272fskxt3,272ksdmp3,273h924h3,273h930g4,273h94lc3,273h9rep2,273hd9tt4,273jqygz3,273jqyhj3,274l7fup1,275f67sx2,275p5t6p5,277x2k8z3,277x2kch1,277x2kqr3,277x2l4x5,277x2ww15,27910xs12,27910yo05,27911n5t1,27a4zbbb0,27a4zber1,27gspkht3,27gspkzl3,27j0mbnl1,27ji50jl4,27jkm7lt3,27k4ledd4,281lvthd3,28a51c014,29e0w9hd3,29e0y0ox3,29e3e5tv4,29e3eigx2,29e3fx1f4,29e5xtdt4,2a4ntaww1,2dc5m9s70,2dc5mmf72,32o6jmyp5,357efb425,395gk9a95,395gm0ht5,395gnf2c5,3y2fln9d3,3y2x3ngh3,3y2x3pfl3,3y2zku0x3,3y34kmpt3,3y411b7l3,3y411bpd3,3y411dog5,3y4120ht5,3y4120zl1,3y4121dt1,3y4122yp5,3y415iwx5,3y550e0x5,3y550ghs5,3y68y2dd1,3y68y2rl1,3y68y35t1,3y68y4qp5,3y68yrk35,3y68zgu95,3yaormv45,3ycwobgh5,3ycwoby95,3ye0nerl5,3yf4l2ir5,3yf4l2jb5,3yf4l30j5,3yo082rl5,3yo0839d5,40j2zx1d3,40j31o8x3,40s17zep2,44h580zn3,44h7rojl4,49esi2dd5,4to6cp353,4ts270g13,4tuu2y9t4,4tvlju2p3,4tvo1qf73,4tvo1qip3,4tvo23293,4tvqjmrl4,4tvrskxt3,4tvy1bsz3,4twbrrpd1,4u4joqo13,4u4toc1t3,4u5dnitf3,4u5xmpkx4,4udcu77l3,4udmtfy93,4ueqrthd3,4ues0rnl3,4uv6m41t2,4uv93nr55,4v3zqvb53,4wu57x4x3,4wu589oh4,4wu6gv7l3,4wua7ptt5,4yt6bz0h4,501kj08x3,56pas70h2,59gxzdhj0,59kv2zup2,59kv30u93,59n1qfwh5,59n1qhvl1,59n1qsqp4,59n1quio1,8c0dgykh1,8c0xg5c31,8c5n98u93,8cnc1czl3,8cqz514x5,8d55t9tt3,8de1ga2p3,8debfvgh3,8dffe8zl5,8f44ffgh4,8rx0xzi91,a37zyuwx4,a5rcsxdt4,a5rcubyc4,a9pezmrl2,aynzgc1t4,aynzgcjl3,aynzgg3k5,aynzh1c33,aynzh1fl1,aynzh2811,aynzhqm93,ayp3fev54,ayp3g45d5,ayq7d4011,aysfajgh2,ayun6l8h5,aywv3car3,aywv3ce91,aywv3d6p1,aywv3oxt2,ayxz1ptt2,ayxz2f7l1,az5qqcjl3,az5qqd1d3,az7yn3pd1,bvf7ioox4,ha9deayp3,ha9ie3nl4,hz7xw2691,hz7xw2o11,hza5s4g15,hzgtid4x1,hzgtidmp1,ivz5xpfl4,ixy71ri96,mt0xs0011,1k4fneao13,1k4fnj8u93,1k4fnlbi93,1k4fnlcht3,1k4fnui693,1k4fnv5oh3,1k4fnv7nl3,1k4fpu3293,1k4fpusg13,1k4fputfl3,1k4fpyb9d2,1k4fq14e93,1k4fq15z53,1k4fq37ur3,1k4fq381t4,1k4fqccxt2,1k4fqd2f51,1k4fse3cx3,1k4fsj14y2,1k4fsl4755,1k4fsl56p4,1k4fsv0ch0,1k4futvr53,1k4futvr73,1k4futvup3,1k4fuu8e93,1k4fztog13,1k4fzudtt3,1k4fzxw8x3,1k4g00ps16,1k4g0bxxd6,1k4g2bksh3,1k4g3kiyp3,1k4gcbvy93,1k4gcbxxd3,1k4gcda4h3,1k4get2ip3,1k4get2ir3,1k4get2m92,1k4getf5t3,1k4gjsv7l3,1k4gjsv7n3,1k4gjsvb53,1k4gjsvpd3,1k4gjt7up3,1k4gjtksh3,1k4gju9vl2,1k4gjwq9t3,1k4gjzw5d3,1k4gwb7up6,1k4h3s1z53,1k4h3srcx2,1k4h69ybl3,1k4h6anlt3,1k4h7iwht3,1k4hg9jpd3,1k4hg9k753,1k4hga8zl2,1k4hga9hd3,1k4hga9vl3,1k4hgabgh3,1k4hgd24h4,1k4hgd2811,1k4hirg5f2,1k4hmiakh3,1k4hmizy93,1k4hnr8qr3,1k4hnr8u93,1k4hnr91d3,1k4hnr98j3,1k4hnrldt3,1k4hnsao12,1k4hnv3sx3,1k4ik8n0h2,1k4ika16p1,1k4jafv291,1k4jafv2j5,1k4jafw1t1,1k4jafw231,1k4jag0015,1k4jag00b5,1k4jbot4x4,1k4jbp5oh2,1k4je8gld2,1k4jo6av51,1k4jo6b9d2,1k4jo6d8h2,1k4jo70jn4,1k4jo70xt1,1k4jo743l2,1k4juf1mr5,1k4juf1q92,1k4jvo03l4,1k4jvo0ht1,1k4jvp1q92,1k4k3q2695,1k4k5nls13,1k4kanev53,1k4kfn75t3,1k4kumlmp3,1k4kzmdj53,1k4kzmdxf3,1k4kzn2pt3,1k4ljlkox4,1k4lw32f53,1k4lw34e93,1k4lyky9t4,1k4m2chz55,1k4m3kqv73,1k4m3kqyp3,1k4m3kr2b3,1k4m3kr9d3,1k4nqa3gh5,1k4nu07pd6,1k4o3ztvl1,1k4obhhxf4,1k4pe7a4h3,1k4qbwkg13,1k4qbwmf53,1k4qbyb5t4,1k4qi5awx2,1k4qje9a93,1k4rfuxz54,1k4sjtbwh1,1k4tv9e693,1k4uz7rb54,1k4uz7rpf4,1k4wzmvpd1,1k51unfk13,1k51wxm9v3,1k51wxmaf3,1k51wxypu4,1k51wy0oy4,1k51wyo064,1k51wzdac4,1k521xeyv0,1k529fssh3,1k52jfekh3,1k53ddh4x4,1k5836kjl4,1k5jm8old4,1k5jobhmu4,1k5jt7fh34,1k5l25loh2,1k5sjun0h3,1k5stu8e93,1k5tdterl3,1k5tdtf5v3,1k5txslxd5,1k61fhzpg4,1k6u0bta93,1k6yewd500,1k6ziuqo21,1k70y20oy4,1k70y3f9g4,1k7ipborb3,1k9hvfjfb0,1kaz0a4n82,1kaz0atxe0,1kk7wszup4,1kk7wt0u93,1kk81stj56,1kk8lqkqp6,1kk9rnvur3,1kk9rnvy93,1kk9wnp1d3,1kkbx3gch2,1kkc4kflv2,1kkc4kfpd1,1kkech6v53,1kkgs4rk12,1kkgumo3l1,1kkhocb9f4,1kkpg0y696,1kllmpuyp3,1klmqo83l4,1kmy98osl3,1kn0h5fut0,1knfbk2gy4,1knfbnkw23,1knfgndky1,1l01llaf51,1l01llatf0,1l01llbep1,1l01losu92,1l024b66b3,1l024b66v3,1l025kgzn2,1l025na4j3,1l025nzer2,1l03s8qoj1,1l03s8qvf1,1l03s8sgb1,1l04c7x8n0,1l08829s12,1lfu9h43o3,1lfu9hh1g1,1lfwhditg1,1lfwhdv600,1lfwhekgo0,1lg1zx5ac0,1lg2jwc1u5,1lg33utj80,1lg33utmq3,1lg353s041,1lg5brkp00,1lii25qma2,1lmg4duo22,1lvmh4yo41,1lvoa1ma35,1lvoa1n9n1,1lvoa1r7l5,1lvou0sub5,1lvou0suv5,1mbeosght3,1mbeosigx3,1mbew9fr73,1mbgwoi9t2,1mbgwok8x2,1mbgwp7y91,1mbpsbiwx5,1mdukp4oz1,1mdukphj70,1mhrsyghv5,1mhrsygif5,1mhrt07pf4,1mr617uo33,1mr61bd373,1mr6l8g032,1mr756xhf2,1n6z92vb65,1n71gzmdg5,1n783gkqq5,1n9n1x43m5,1oybz3yf80,1oybz3yiq3,1oybz4b2a3,1oyc0cww41,1oycj356q3,1oyd32c1w0,1oyd32c8y2,1oyd32olg0,1oyeqzw900,1pdy994pf1,1sglybgua3,1sgn29udg0,1sgn29ugy3,1sw88gn4b5,1tibrdhc31,1u7j7hw5g3,1u7lfen7s0,1u7s1vll00,1ua706io22,1ue52emmc6,1zh70ov7m3,294fvae111,348w0x1fn3,348x4ve6b3,348x4veyv0,348x4vfr73,348zcs58n0,3491kox373,349bj0mwz6,34opdrurn3,3604sq3gj2,3604t454z2,4odf53f9f5,4odf6cd8j1,4odf6cq2r2,4odf6fj7n2,4oej4pwjn4,4oih6y0hv6,4p8z2x43v6,4pp0mfy100,4t78dqpdw0,68hsfjsev6,68hungion6,68mstg3yv6'.split(',').forEach((e) => { book[e.slice(0, -1)] = +e.slice(-1); });
+  if (typeof module === 'object' && module.exports) module.exports = book;
+  else self.CONNECT_BOOK = book;
+})();
+</script>
+<script type="text/plain" id="ai-src">/* Connect AI — the brain behind the Connect 4 bot. Runs in a Web Worker (and in Node for the
+   tests and the opening-book builder).
+
+   Connect 4 on 7×6 is solved: the engine is an exact solver (Pascal Pons' bitboard negamax with
+   a transposition table, null-window score narrowing and "never play a move that loses at once"
+   pruning), so it always plays a move that keeps the best possible result. The first few plies
+   take too long to solve live, so they come from an opening book built offline with the same
+   solver (tools/connect4-book.c + tools/connect4-book.js → connect-book.js).
+
+   Connect 5 on 9×7 and Connect 6 on 11×8 are not solved by anyone, so those boards use a deep
+   alpha-beta search (iterative deepening, transposition table, forced-move extensions, threat and
+   zugzwang-aware evaluation). It never misses a win or a block inside its horizon, which is far
+   deeper than a person reads. */
+(function () {
+  'use strict';
+
+  /* =====================================================================================
+     Connect 4, 7×6: exact solver.
+     Bitboard: column c uses bits c*7 .. c*7+6 (bit 6 of each column is an always-empty
+     sentinel). JS bit operations are 32-bit, so the 49-bit board is split on a column
+     boundary: `l` holds columns 0-3 (28 bits), `h` holds columns 4-6 (21 bits).
+     ===================================================================================== */
+  const C4 = (function () {
+    const W = 7, H = 6, H1 = 7, SIZE = W * H;
+    const LB = 28, LM = 0x0fffffff, HM = 0x1fffff;
+    const MIN_SCORE = -(SIZE / 2) + 3, MAX_SCORE = (SIZE + 1) / 2 - 3 | 0;
+    const ORDER = [3, 2, 4, 1, 5, 0, 6];
+
+    // per-column masks, split into the two halves
+    const COL_L = new Int32Array(W), COL_H = new Int32Array(W), TOP_L = new Int32Array(W), TOP_H = new Int32Array(W);
+    let BOT_L = 0, BOT_H = 0;
+    for (let c = 0; c < W; c++) {
+      const lo = c < 4, sh = (lo ? c : c - 4) * H1;
+      const col = ((1 << H) - 1) << sh, bot = 1 << sh, top = 1 << (sh + H - 1);
+      if (lo) { COL_L[c] = col; TOP_L[c] = top; BOT_L |= bot; } else { COL_H[c] = col; TOP_H[c] = top; BOT_H |= bot; }
+    }
+    const BM_L = BOT_L * ((1 << H) - 1), BM_H = BOT_H * ((1 << H) - 1);
+
+    // shifted copies of a pair, written to these scratch slots
+    let rl = 0, rh = 0;
+    function shl(l, h, s) { rl = (l << s) & LM; rh = ((h << s) | (l >>> (LB - s))) & HM; }
+    function shr(l, h, s) { rl = ((l >>> s) | (h << (LB - s))) & LM; rh = h >>> s; }
+
+    /** Empty cells that would complete a four for the stones in (pl, ph). Result in rl/rh. */
+    function winning(pl, ph, ml, mh) {
+      // vertical
+      let a, b, c, d;
+      shl(pl, ph, 1); let ol = rl, oh = rh;
+      shl(pl, ph, 2); ol &= rl; oh &= rh;
+      shl(pl, ph, 3); ol &= rl; oh &= rh;
+      for (let k = 0; k < 3; k++) {
+        const s = k === 0 ? H1 : k === 1 ? H : H + 2;
+        shl(pl, ph, s); const l1 = rl, h1 = rh;
+        shl(pl, ph, 2 * s); const l2 = rl, h2 = rh;
+        shl(pl, ph, 3 * s); const l3 = rl, h3 = rh;
+        shr(pl, ph, s); const r1l = rl, r1h = rh;
+        shr(pl, ph, 2 * s); const r2l = rl, r2h = rh;
+        shr(pl, ph, 3 * s); const r3l = rl, r3h = rh;
+        a = l1 & l2; b = h1 & h2;
+        ol |= (a & l3) | (a & r1l); oh |= (b & h3) | (b & r1h);
+        c = r1l & r2l; d = r1h & r2h;
+        ol |= (c & l1) | (c & r3l); oh |= (d & h1) | (d & r3h);
+      }
+      rl = ol & (BM_L ^ ml); rh = oh & (BM_H ^ mh);
+    }
+    const pop = (x) => { x -= (x >>> 1) & 0x55555555; x = (x & 0x33333333) + ((x >>> 2) & 0x33333333); return (((x + (x >>> 4)) & 0x0f0f0f0f) * 0x01010101) >>> 24; };
+
+    /** Does the (pl, ph) stone set contain four in a row? */
+    function aligned(pl, ph) {
+      for (let k = 0; k < 4; k++) {
+        const s = k === 0 ? 1 : k === 1 ? H1 : k === 2 ? H : H + 2;
+        shr(pl, ph, s); const ml = pl & rl, mh = ph & rh;
+        shr(ml, mh, 2 * s); if ((ml & rl) | (mh & rh)) return true;
+      }
+      return false;
+    }
+
+    /* ---- transposition table: 49-bit key = position + mask, stored as key mod 2^32 ---- */
+    const TT_SIZE = 4194301; // prime
+    const ttKey = new Uint32Array(TT_SIZE), ttVal = new Uint8Array(TT_SIZE);
+    const ttIndex = (kl, kh) => (kh * 268435456 + kl) % TT_SIZE;
+    function ttGet(kl, kh) { const i = ttIndex(kl, kh); return ttKey[i] === ((kl | (kh << LB)) >>> 0) ? ttVal[i] : 0; }
+    function ttPut(kl, kh, v) { const i = ttIndex(kl, kh); ttKey[i] = (kl | (kh << LB)) >>> 0; ttVal[i] = v; }
+    function ttClear() { ttKey.fill(0); ttVal.fill(0); }
+
+    // move sorter scratch, one row per ply
+    const SL = new Int32Array(SIZE * 8), SH = new Int32Array(SIZE * 8), SS = new Int32Array(SIZE * 8);
+
+    let nodes = 0, limit = Infinity;
+    const ABORT = { abort: true };
+
+    /* negamax on (current player's stones, mask). Precondition: the player to move cannot win now. */
+    function negamax(cl, ch, ml, mh, n, alpha, beta) {
+      if (++nodes > limit) throw ABORT;
+      // possible non-losing moves
+      let pl = (ml + BOT_L) & BM_L, ph = (mh + BOT_H) & BM_H;
+      winning(cl ^ ml, ch ^ mh, ml, mh);
+      const ol = rl, oh = rh;
+      let fl = pl & ol, fh = ph & oh;
+      if (fl | fh) {
+        if ((fl && fh) || (fl & (fl - 1)) || (fh & (fh - 1))) return -((SIZE - n) >> 1);
+        pl = fl; ph = fh;
+      }
+      pl &= ~(ol >>> 1) & LM; ph &= ~(oh >>> 1);
+      if (!(pl | ph)) return -((SIZE - n) >> 1);
+      if (n >= SIZE - 2) return 0;
+
+      let min = -((SIZE - 2 - n) >> 1);
+      if (alpha < min) { alpha = min; if (alpha >= beta) return alpha; }
+      let max = (SIZE - 1 - n) >> 1;
+      if (beta > max) { beta = max; if (alpha >= beta) return beta; }
+      const kl = cl + ml, kh = ch + mh;
+      const v = ttGet(kl, kh);
+      if (v) {
+        if (v > MAX_SCORE - MIN_SCORE + 1) {
+          min = v + 2 * MIN_SCORE - MAX_SCORE - 2;
+          if (alpha < min) { alpha = min; if (alpha >= beta) return alpha; }
+        } else {
+          max = v + MIN_SCORE - 1;
+          if (beta > max) { beta = max; if (alpha >= beta) return beta; }
+        }
+      }
+
+      // sort moves by how many new threats they make (centre first on ties)
+      const base = n * 8;
+      let cnt = 0;
+      for (let i = W - 1; i >= 0; i--) {
+        const c = ORDER[i];
+        const vl = pl & COL_L[c], vh = ph & COL_H[c];
+        if (!(vl | vh)) continue;
+        winning(cl | vl, ch | vh, ml, mh);
+        const sc = pop(rl) + pop(rh);
+        let p = cnt++;
+        for (; p && SS[base + p - 1] > sc; p--) { SL[base + p] = SL[base + p - 1]; SH[base + p] = SH[base + p - 1]; SS[base + p] = SS[base + p - 1]; }
+        SL[base + p] = vl; SH[base + p] = vh; SS[base + p] = sc;
+      }
+      while (cnt) {
+        cnt--;
+        const vl = SL[base + cnt], vh = SH[base + cnt];
+        const score = -negamax(cl ^ ml, ch ^ mh, ml | vl, mh | vh, n + 1, -beta, -alpha);
+        if (score >= beta) { ttPut(kl, kh, score + MAX_SCORE - 2 * MIN_SCORE + 2); return score; }
+        if (score > alpha) alpha = score;
+      }
+      ttPut(kl, kh, alpha - MIN_SCORE + 1);
+      return alpha;
+    }
+
+    /* ---- positions ---- */
+    function fromMoves(moves) {
+      let cl = 0, ch = 0, ml = 0, mh = 0;
+      const hgt = new Int8Array(W);
+      for (let i = 0; i < moves.length; i++) {
+        const c = moves[i];
+        if (!(c >= 0 && c < W) || hgt[c] >= H) return null;
+        const vl = ((ml + BOT_L) & COL_L[c]), vh = ((mh + BOT_H) & COL_H[c]);
+        // a game that is already over has no moves left
+        if (aligned(cl | vl, ch | vh)) return null;
+        cl ^= ml; ch ^= mh; ml |= vl; mh |= vh;
+        hgt[c]++;
+      }
+      return { cl, ch, ml, mh, n: moves.length };
+    }
+    function playable(P, c) { return !((P.ml & TOP_L[c]) | (P.mh & TOP_H[c])); }
+    function winsNow(P, c) {
+      if (!playable(P, c)) return false;
+      winning(P.cl, P.ch, P.ml, P.mh);
+      const pl = (P.ml + BOT_L) & BM_L, ph = (P.mh + BOT_H) & BM_H;
+      return !!((rl & pl & COL_L[c]) | (rh & ph & COL_H[c]));
+    }
+    function play(P, c) {
+      const vl = ((P.ml + BOT_L) & COL_L[c]), vh = ((P.mh + BOT_H) & COL_H[c]);
+      return { cl: P.cl ^ P.ml, ch: P.ch ^ P.mh, ml: P.ml | vl, mh: P.mh | vh, n: P.n + 1 };
+    }
+
+    /** Exact score of a position: >0 the player to move wins (bigger = sooner), 0 draw, <0 loses. */
+    function solve(P) {
+      for (let c = 0; c < W; c++) if (winsNow(P, c)) return (SIZE + 1 - P.n) >> 1;
+      let min = -((SIZE - P.n) >> 1), max = (SIZE + 1 - P.n) >> 1;
+      while (min < max) {
+        let med = min + ((max - min) >> 1);
+        if (med <= 0 && Math.trunc(min / 2) < med) med = Math.trunc(min / 2);
+        else if (med >= 0 && Math.trunc(max / 2) > med) med = Math.trunc(max / 2);
+        const r = negamax(P.cl, P.ch, P.ml, P.mh, P.n, med, med + 1);
+        if (r <= med) max = r; else min = r;
+      }
+      return min;
+    }
+
+    /** Score of playing column c (from the mover's side), exact. */
+    function scoreMove(P, c) {
+      if (!playable(P, c)) return null;
+      if (winsNow(P, c)) return (SIZE + 1 - P.n) >> 1;
+      return -solve(play(P, c));
+    }
+
+    /** Does the player to move in Q (who just got the move) have a four to play right now? */
+    function threatNow(Q) {
+      winning(Q.cl, Q.ch, Q.ml, Q.mh);
+      return !!((rl & ((Q.ml + BOT_L) & BM_L)) | (rh & ((Q.mh + BOT_H) & BM_H)));
+    }
+    /** Is playing c from P worth at least `target` (in the mover's score)? Uses a null window. */
+    function keeps(P, c, target) {
+      const Q = play(P, c);
+      if (threatNow(Q)) return -((SIZE + 1 - Q.n) >> 1) >= target;   // they win at once
+      if (Q.n >= SIZE) return 0 >= target;
+      return -negamax(Q.cl, Q.ch, Q.ml, Q.mh, Q.n, -target, -target + 1) >= target;
+    }
+
+    /**
+     * The best column for the player to move. `result` is 1 (the mover wins with best play),
+     * 0 (draw) or -1 (loss). A won or drawn position only needs a move that keeps that result,
+     * which is far cheaper to find than the exact score: any move that keeps a win still wins in
+     * the end, because the board fills up. A lost position is solved exactly, and the move that
+     * holds out longest is played. Ties go to the column nearest the centre. `maxNodes` caps the
+     * work; past it null is returned so the caller can fall back to a heuristic search.
+     */
+    function best(moves, maxNodes) {
+      const P = fromMoves(moves);
+      if (!P || P.n >= SIZE) return null;
+      nodes = 0; limit = maxNodes || Infinity;
+      try {
+        for (const c of ORDER) if (winsNow(P, c)) return { move: c, result: 1, nodes };
+        let result;
+        if (negamax(P.cl, P.ch, P.ml, P.mh, P.n, 0, 1) > 0) result = 1;
+        else result = negamax(P.cl, P.ch, P.ml, P.mh, P.n, -1, 0) < 0 ? -1 : 0;
+        const target = result >= 0 ? result : solve(P);
+        for (const c of ORDER) if (playable(P, c) && keeps(P, c, target)) return { move: c, result, score: target, nodes };
+        for (const c of ORDER) if (playable(P, c)) return { move: c, result, score: target, nodes };
+        return null;
+      } catch (e) {
+        if (e === ABORT) return null;
+        throw e;
+      } finally { limit = Infinity; }
+    }
+
+    /** Book key: the position (not the move order), the same for its mirror image. */
+    function bookKey(moves) {
+      const P = fromMoves(moves), M = fromMoves(moves.map((c) => W - 1 - c));
+      if (!P) return null;
+      const a = (P.ch + P.mh) * 268435456 + P.cl + P.ml, b = (M.ch + M.mh) * 268435456 + M.cl + M.ml;
+      return a <= b ? { key: a.toString(36), mirror: false } : { key: b.toString(36), mirror: true };
+    }
+
+    return { W, H, best, solve, scoreMove, fromMoves, play, winsNow, playable, bookKey, ttClear, nodesUsed: () => nodes, SIZE };
+  })();
+
+  /* =====================================================================================
+     Any W×H board, K in a row: alpha-beta search with an evaluation.
+     Cells are numbered col*H + row, row 0 at the bottom.
+     ===================================================================================== */
+  function makeEngine(W, H, K) {
+    const N = W * H, WIN = 1000000, MATE = WIN - 1000;
+    const ORDER = Array.from({ length: W }, (_, i) => i).sort((a, b) => Math.abs(a - (W - 1) / 2) - Math.abs(b - (W - 1) / 2) || a - b);
+
+    // every K-long line on the board
+    const lines = [];
+    for (let c = 0; c < W; c++) for (let r = 0; r < H; r++) {
+      for (const [dc, dr] of [[1, 0], [0, 1], [1, 1], [1, -1]]) {
+        const ec = c + dc * (K - 1), er = r + dr * (K - 1);
+        if (ec < 0 || ec >= W || er < 0 || er >= H) continue;
+        const cells = [];
+        for (let i = 0; i < K; i++) cells.push((c + dc * i) * H + (r + dr * i));
+        lines.push(cells);
+      }
+    }
+    const NL = lines.length;
+    const lineCells = new Int32Array(NL * K);
+    lines.forEach((cs, i) => cs.forEach((x, j) => { lineCells[i * K + j] = x; }));
+    const cellLines = Array.from({ length: N }, () => []);
+    lines.forEach((cs, i) => cs.forEach((x) => cellLines[x].push(i)));
+    const CL = cellLines.map((a) => Int32Array.from(a));
+
+    // line value by how many stones of one colour it holds (and none of the other)
+    const LV = new Int32Array(K + 1);
+    for (let i = 1; i < K; i++) LV[i] = Math.round(Math.pow(5, i - 1) * (i === K - 1 ? 2 : 1));
+    // the centre is worth a little on its own: more lines run through it
+    const CELLV = new Int32Array(N);
+    for (let x = 0; x < N; x++) CELLV[x] = cellLines[x].length;
+
+    const board = new Int8Array(N);         // 0 empty, 1 first player, 2 second
+    const height = new Int8Array(W);
+    const cnt = [new Int8Array(NL), new Int8Array(NL)];
+    let n = 0, evalScore = 0;               // evalScore: from the first player's side
+    // Zobrist keys, two 32-bit halves
+    let seed = 0x9e3779b9;
+    const rnd = () => { seed ^= seed << 13; seed ^= seed >>> 17; seed ^= seed << 5; return seed >>> 0; };
+    const ZL = [new Uint32Array(N), new Uint32Array(N)], ZH = [new Uint32Array(N), new Uint32Array(N)];
+    for (let p = 0; p < 2; p++) for (let x = 0; x < N; x++) { ZL[p][x] = rnd(); ZH[p][x] = rnd(); }
+    let hl = 0, hh = 0;
+
+    function make(c) {
+      const p = n & 1, o = p ^ 1, x = c * H + height[c];
+      const cp = cnt[p], co = cnt[o], ls = CL[x];
+      let d = CELLV[x];
+      for (let i = 0; i < ls.length; i++) {
+        const l = ls[i], a = cp[l], b = co[l];
+        if (!b) d += LV[a + 1 < K ? a + 1 : 0] - LV[a];
+        else if (!a) d += LV[b];                    // their line is dead now
+        cp[l] = a + 1;
+      }
+      evalScore += p ? -d : d;
+      board[x] = p + 1; height[c]++; n++;
+      hl ^= ZL[p][x]; hh ^= ZH[p][x];
+    }
+    function unmake(c) {
+      n--; height[c]--;
+      const p = n & 1, o = p ^ 1, x = c * H + height[c];
+      const cp = cnt[p], co = cnt[o], ls = CL[x];
+      let d = CELLV[x];
+      for (let i = 0; i < ls.length; i++) {
+        const l = ls[i], a = cp[l] - 1, b = co[l];
+        if (!b) d += LV[a + 1 < K ? a + 1 : 0] - LV[a];
+        else if (!a) d += LV[b];
+        cp[l] = a;
+      }
+      evalScore -= p ? -d : d;
+      board[x] = 0;
+      hl ^= ZL[p][x]; hh ^= ZH[p][x];
+    }
+    /** Would player p complete a line by playing in column c now? */
+    function wins(c, p) {
+      if (height[c] >= H) return false;
+      const x = c * H + height[c], ls = CL[x], cp = cnt[p], co = cnt[p ^ 1];
+      for (let i = 0; i < ls.length; i++) if (cp[ls[i]] === K - 1 && !co[ls[i]]) return true;
+      return false;
+    }
+    /** Would cell x complete a line for p (x empty)? */
+    function threatAt(x, p) {
+      const ls = CL[x], cp = cnt[p], co = cnt[p ^ 1];
+      for (let i = 0; i < ls.length; i++) if (cp[ls[i]] === K - 1 && !co[ls[i]]) return true;
+      return false;
+    }
+
+    /* Leaf evaluation for the player to move: the line values kept up to date by make(), plus the
+       threats on the board (empty cells that would finish a line). With an even number of rows the
+       board ends in zugzwang: if both players just answer in the same column, the first player gets
+       the odd rows (1st, 3rd… from the bottom) and the second player the even rows. So the lowest
+       threat in a column is worth a lot when it sits on its owner's parity (the other side will be
+       forced to play under it once the board fills up), and little otherwise. */
+    const stamp = new Int32Array(N), low0 = new Int8Array(W), low1 = new Int8Array(W);
+    let stampN = 0;
+    function evaluate() {
+      let s = evalScore;
+      stampN++;
+      low0.fill(H); low1.fill(H);
+      for (let l = 0; l < NL; l++) {
+        const a = cnt[0][l], b = cnt[1][l];
+        let p;
+        if (a === K - 1 && !b) p = 0; else if (b === K - 1 && !a) p = 1; else continue;
+        let x = -1;
+        for (let j = 0; j < K; j++) { const y = lineCells[l * K + j]; if (!board[y]) { x = y; break; } }
+        if (x < 0 || stamp[x] === stampN) continue;
+        stamp[x] = stampN;
+        const row = x % H, col = (x - row) / H;
+        let v = 80 - (row - height[col]) * 4;   // nearer the top of its stack = sooner in play
+        if (threatAt(x, p ^ 1)) v >>= 1;         // both need this cell
+        s += p === 0 ? v : -v;
+        if (p === 0) { if (row < low0[col]) low0[col] = row; } else if (row < low1[col]) low1[col] = row;
+      }
+      if ((H & 1) === 0) {
+        let z0 = 0, z1 = 0;
+        for (let c = 0; c < W; c++) {
+          const r0 = low0[c], r1 = low1[c];
+          if (r0 === H && r1 === H) continue;
+          if (r0 < r1) { if ((r0 & 1) === 0) { z0++; s += 900; } else s += 150; }
+          else if (r1 < r0) { if ((r1 & 1) === 1) { z1++; s -= 900; } else s -= 150; }
+          // both threaten the same cell: whoever gets there first wins, the search sees that
+        }
+        if (z0 && !z1) s += 2500; else if (z1 && !z0) s -= 2500;
+      }
+      return (n & 1) ? -s : s;
+    }
+
+    /* ---------- search ---------- */
+    const TT_BITS = 20, TT_N = 1 << TT_BITS, TT_MASK = TT_N - 1;
+    const tKey = new Uint32Array(TT_N), tKey2 = new Uint32Array(TT_N), tVal = new Int32Array(TT_N), tInfo = new Int16Array(TT_N);
+    // tInfo: depth*64 + flag*16 + move+1 (flag 1 exact, 2 lower, 3 upper)
+    const hist = new Int32Array(N);
+    const killer = new Int8Array(N + 2).fill(-1);
+    const moveBuf = new Int8Array((N + 2) * W), scoreBuf = new Int32Array((N + 2) * W);
+    let nodes = 0, deadline = 0, stopped = false;
+    const STOP = { stop: true };
+    const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+
+    function search(depth, alpha, beta, ply) {
+      if ((++nodes & 2047) === 0 && now() > deadline) { stopped = true; throw STOP; }
+      if (n >= N) return 0;
+      const me = n & 1, op = me ^ 1;
+      for (let i = 0; i < W; i++) if (wins(ORDER[i], me)) return WIN - ply;
+      let forced = -1, threats = 0;
+      for (let c = 0; c < W; c++) if (wins(c, op)) { threats++; forced = c; }
+      if (threats >= 2) return -(WIN - ply - 1);
+      if (n + 1 >= N) return 0;
+      // a mate can't come sooner than next turn: clamp the window
+      const best0 = WIN - ply - 2;
+      if (beta > best0) { beta = best0; if (alpha >= beta) return beta; }
+
+      if (threats === 1) depth++;           // forced block: look further
+      if (depth <= 0) return evaluate();
+
+      const slot = (hl & TT_MASK);
+      let ttMove = -1;
+      if (tKey[slot] === hl && tKey2[slot] === hh) {
+        const info = tInfo[slot], d = info >> 6, flag = (info >> 4) & 3;
+        ttMove = (info & 15) - 1;
+        if (d >= depth) {
+          let v = tVal[slot];
+          if (v > MATE) v -= ply; else if (v < -MATE) v += ply;
+          if (flag === 1) return v;
+          if (flag === 2 && v >= beta) return v;
+          if (flag === 3 && v <= alpha) return v;
+        }
+      }
+
+      // move list
+      const base = ply * W;
+      let m = 0;
+      if (forced >= 0) { moveBuf[base] = forced; m = 1; }
+      else {
+        for (let i = 0; i < W; i++) {
+          const c = ORDER[i];
+          if (height[c] >= H) continue;
+          let sc = hist[c * H + height[c]] + (W - i);
+          if (c === ttMove) sc += 1 << 28;
+          else if (c === killer[ply]) sc += 1 << 26;
+          // giving the opponent the cell above for a win: try last
+          if (height[c] + 1 < H && threatAt(c * H + height[c] + 1, op)) sc -= 1 << 27;
+          let p = m++;
+          for (; p && scoreBuf[base + p - 1] < sc; p--) { moveBuf[base + p] = moveBuf[base + p - 1]; scoreBuf[base + p] = scoreBuf[base + p - 1]; }
+          moveBuf[base + p] = c; scoreBuf[base + p] = sc;
+        }
+      }
+
+      const a0 = alpha;
+      let best = -Infinity, bestMove = moveBuf[base];
+      for (let i = 0; i < m; i++) {
+        const c = moveBuf[base + i];
+        make(c);
+        let v;
+        if (i === 0) v = -search(depth - 1, -beta, -alpha, ply + 1);
+        else {
+          v = -search(depth - 1, -alpha - 1, -alpha, ply + 1);
+          if (v > alpha && v < beta) v = -search(depth - 1, -beta, -alpha, ply + 1);
+        }
+        unmake(c);
+        if (v > best) { best = v; bestMove = c; }
+        if (v > alpha) alpha = v;
+        if (alpha >= beta) {
+          killer[ply] = c;
+          hist[c * H + height[c]] += depth * depth;
+          break;
+        }
+      }
+      // store
+      let sv = best;
+      if (sv > MATE) sv += ply; else if (sv < -MATE) sv -= ply;
+      const flag = best <= a0 ? 3 : best >= beta ? 2 : 1;
+      tKey[slot] = hl; tKey2[slot] = hh; tVal[slot] = sv;
+      tInfo[slot] = (Math.min(depth, 500) << 6) | (flag << 4) | (bestMove + 1);
+      return best;
+    }
+
+    let lastMoves = [];
+
+    /** Best column for the player to move after `moves`, searching for about `ms` milliseconds. */
+    function best(moves, ms, maxDepth) {
+      for (let i = lastMoves.length - 1; i >= 0; i--) unmake(lastMoves[i]);
+      lastMoves = [];
+      for (const c of moves) {
+        if (!(c >= 0 && c < W) || height[c] >= H) { for (let i = lastMoves.length - 1; i >= 0; i--) unmake(lastMoves[i]); lastMoves = []; return null; }
+        make(c); lastMoves.push(c);
+      }
+      if (n >= N) return null;
+      const me = n & 1, op = me ^ 1;
+      // instant decisions
+      for (const c of ORDER) if (wins(c, me)) return { move: c, score: WIN, depth: 1, nodes: 0 };
+      const blocks = ORDER.filter((c) => wins(c, op));
+      if (blocks.length === 1) return { move: blocks[0], score: 0, depth: 0, nodes: 0 };   // the only move that doesn't lose at once
+      const legal = ORDER.filter((c) => height[c] < H);
+      if (legal.length === 1) return { move: legal[0], score: 0, depth: 0, nodes: 0 };
+
+      nodes = 0; stopped = false; deadline = now() + ms;
+      hist.fill(0);
+      let bestMove = blocks.length ? blocks[0] : legal[0], bestScore = 0, done = 0;
+      const limit = Math.min(maxDepth || 64, N - n);
+      for (let d = 1; d <= limit; d++) {
+        let alpha = -Infinity, beta = Infinity, cur = -1, curScore = -Infinity;
+        try {
+          // root: try last iteration's best first
+          const list = [bestMove].concat(legal.filter((c) => c !== bestMove));
+          for (const c of list) {
+            make(c);
+            let v;
+            if (cur < 0) v = -search(d - 1, -beta, -alpha, 1);
+            else {
+              v = -search(d - 1, -alpha - 1, -alpha, 1);
+              if (v > alpha) v = -search(d - 1, -beta, -alpha, 1);
+            }
+            unmake(c);
+            if (v > curScore) { curScore = v; cur = c; }
+            if (v > alpha) alpha = v;
+          }
+        } catch (e) {
+          if (e !== STOP) throw e;
+          rebuild(moves);   // the aborted search left stones on the board
+          // the last best move is searched first, so anything that beat it in this unfinished pass is better
+          if (cur >= 0 && cur !== bestMove) { bestMove = cur; bestScore = curScore; }
+          break;
+        }
+        bestMove = cur; bestScore = curScore; done = d;
+        if (Math.abs(bestScore) > MATE) break;   // a forced result: no need to look deeper
+        if (now() > deadline - ms * 0.45) break;  // the next iteration won't finish
+      }
+      return { move: bestMove, score: bestScore, depth: done, nodes };
+    }
+    // rebuild the board from scratch (after an aborted search)
+    function rebuild(moves) {
+      board.fill(0); height.fill(0); cnt[0].fill(0); cnt[1].fill(0);
+      n = 0; evalScore = 0; hl = 0; hh = 0;
+      lastMoves = [];
+      for (const c of moves) { make(c); lastMoves.push(c); }
+    }
+
+    function clear() { tKey.fill(0); tKey2.fill(0); tInfo.fill(0); hist.fill(0); killer.fill(-1); }
+
+    return { W, H, K, best, clear, WIN, MATE };
+  }
+
+  /* =====================================================================================
+     Front door
+     ===================================================================================== */
+  const VARIANTS = {
+    c4: { w: 7, h: 6, k: 4 },
+    c5: { w: 9, h: 7, k: 5 },
+    c6: { w: 11, h: 8, k: 6 },
+  };
+  const engines = {};
+  const engine = (v) => engines[v] || (engines[v] = makeEngine(VARIANTS[v].w, VARIANTS[v].h, VARIANTS[v].k));
+  let BOOK = null;
+  function setBook(b) { BOOK = b; }
+
+  /**
+   * Pick a move. variant: 'c4' | 'c5' | 'c6'; moves: columns played so far (0-based);
+   * opts.ms: thinking time for the searched boards.
+   */
+  function think(variant, moves, opts) {
+    opts = opts || {};
+    if (!VARIANTS[variant]) return null;
+    if (variant === 'c4') {
+      if (BOOK) {
+        const bk = C4.bookKey(moves), hit = bk && BOOK[bk.key];
+        if (hit !== undefined && hit !== null) {
+          const col = bk.mirror ? C4.W - 1 - hit : hit;
+          return { move: col, kind: 'book' };
+        }
+      }
+      const r = C4.best(moves, opts.maxNodes || 30000000);   // ~10 s: past that, search instead
+      if (r) return { move: r.move, result: r.result, kind: 'solved', nodes: r.nodes };
+    }
+    const r = engine(variant).best(moves, opts.ms || 1500);
+    return r && { move: r.move, score: r.score, depth: r.depth, kind: 'search', nodes: r.nodes };
+  }
+
+  const api = { think, VARIANTS, C4, makeEngine, setBook };
+
+  if (typeof module === 'object' && module.exports) module.exports = api;
+  else if (typeof importScripts === 'function') {
+    // in a Web Worker: the book is either bundled in front of this code or sits next to it
+    if (!self.CONNECT_BOOK) {
+      try { importScripts('connect-book.js' + ((self.location && self.location.search) || '')); } catch (e) { /* no book: it just thinks longer */ }
+    }
+    if (self.CONNECT_BOOK) setBook(self.CONNECT_BOOK);
+    self.onmessage = (e) => {
+      const d = e.data || {};
+      let out = null;
+      try { out = think(d.variant, d.moves || [], d.opts); } catch (err) { out = null; }
+      self.postMessage({ id: d.id, result: out });
+    };
+  } else {
+    // a plain page (fallback when workers are unavailable)
+    if (self.CONNECT_BOOK) setBook(self.CONNECT_BOOK);
+    self.ConnectAI = api;
+  }
+})();
+</script>
+<script>
+(function () {
+  'use strict';
+  const $ = (s) => document.querySelector(s), $$ = (s) => Array.from(document.querySelectorAll(s));
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const MODES = {
+    c4: { w: 7, h: 6, k: 4, ms: 0, max: 560 },
+    c5: { w: 9, h: 7, k: 5, ms: 1800, max: 640 },
+    c6: { w: 11, h: 8, k: 6, ms: 2200, max: 760 },
+  };
+  const STORE = 'connect4-bot-record';
+
+  let mode = 'c4', botFirst = false, M = MODES.c4;
+  let moves = [], hgt = [], cells = [], over = null, thinking = false, game = 0;
+  let record = {};
+  try { record = JSON.parse(localStorage.getItem(STORE)) || {}; } catch (e) { record = {}; }
+  const save = () => { try { localStorage.setItem(STORE, JSON.stringify(record)); } catch (e) { /* private mode */ } };
+  const rec = () => record[mode] || (record[mode] = { w: 0, d: 0, l: 0 });
+
+  /* ---------- the bot: a Web Worker built from the code above; in-page if workers can't start ---------- */
+  const SRC = $('#book-src').textContent + '\n' + $('#ai-src').textContent;
+  let worker = null, reqId = 0, local = null;
+  const waiting = {};
+  function startWorker() {
+    try {
+      worker = new Worker(URL.createObjectURL(new Blob([SRC], { type: 'text/javascript' })));
+      worker.onmessage = (e) => { const d = e.data || {}, f = waiting[d.id]; if (f) { delete waiting[d.id]; f(d.result); } };
+      worker.onerror = () => { worker = null; Object.keys(waiting).forEach((id) => { const f = waiting[id]; delete waiting[id]; f(undefined); }); };
+    } catch (e) { worker = null; }
+  }
+  function inPage(variant, list, opts) {
+    if (!local) { (0, eval)(SRC); local = self.ConnectAI; }
+    return local.think(variant, list, opts);
+  }
+  async function ask(variant, list, opts) {
+    if (!worker) startWorker();
+    if (worker) {
+      const id = ++reqId;
+      const res = await new Promise((r) => { waiting[id] = r; worker.postMessage({ id, variant, moves: list, opts }); });
+      if (res !== undefined) return res;   // undefined: the worker failed, think here instead
+    }
+    await sleep(30);   // let the "thinking" text paint first
+    return inPage(variant, list, opts);
+  }
+  /** A new game while the bot is thinking: throw that search away. */
+  function cancel() {
+    if (!thinking || !worker) return;
+    worker.terminate();
+    worker = null;
+    Object.keys(waiting).forEach((id) => { const f = waiting[id]; delete waiting[id]; f(null); });
+  }
+
+  /* ---------- rules ---------- */
+  const me = () => (botFirst ? 1 : 0);   // your player number (0 moves first)
+  const turn = () => moves.length & 1;
+  const at = (c, r) => cells[c * M.h + r];
+  function line(c, r, p) {
+    for (const [dc, dr] of [[1, 0], [0, 1], [1, 1], [1, -1]]) {
+      const run = [[c, r]];
+      for (const s of [1, -1]) {
+        let x = c + dc * s, y = r + dr * s;
+        while (x >= 0 && x < M.w && y >= 0 && y < M.h && at(x, y) === p + 1) { run.push([x, y]); x += dc * s; y += dr * s; }
+      }
+      if (run.length >= M.k) return run;
+    }
+    return null;
+  }
+
+  /* ---------- drawing ---------- */
+  const cellEl = (c, r) => $(`.cell[data-c="${c}"][data-r="${r}"]`);
+  function paintBoard() {
+    let s = '';
+    for (let r = M.h - 1; r >= 0; r--) for (let c = 0; c < M.w; c++) s += `<i class="cell" data-c="${c}" data-r="${r}"><b></b></i>`;
+    const b = $('#board');
+    b.className = 'board';
+    b.style.setProperty('--w', M.w);
+    b.innerHTML = s;
+    $('#cols').style.setProperty('--w', M.w);
+    $('#cols').innerHTML = Array.from({ length: M.w }, (_, c) => `<button type="button" data-c="${c}" aria-label="Drop a disc in column ${c + 1}"></button>`).join('');
+    $('#wrap').style.setProperty('--max', M.max + 'px');
+  }
+  function status() {
+    $$('.cell.ghost').forEach((x) => x.classList.remove('ghost'));
+    const say = $('#say');
+    if (over) {
+      say.textContent = over.winner === null ? 'Draw — the board is full' : over.winner === me() ? 'You win!' : 'The bot wins';
+      say.className = 'say ' + (over.winner === null ? 'draw' : over.winner === me() ? 'win' : 'lose');
+    } else if (thinking) { say.textContent = 'Bot is thinking…'; say.className = 'say wait'; }
+    else { say.textContent = turn() === me() ? (moves.length ? 'Your move' : 'Your move — drop a disc') : 'Bot to move'; say.className = 'say'; }
+    const mine = !over && !thinking && turn() === me();
+    $('#wrap').classList.toggle('mine', mine);
+    $$('#cols button').forEach((b) => { b.disabled = !mine || hgt[+b.dataset.c] >= M.h; });
+    const r = rec();
+    $('#rw').textContent = r.w; $('#rd').textContent = r.d; $('#rl').textContent = r.l;
+    $('#mv').textContent = moves.length;
+  }
+
+  /* ---------- play ---------- */
+  function drop(c) {
+    const r = hgt[c]++, p = turn();
+    cells[c * M.h + r] = p + 1;
+    moves.push(c);
+    const el = cellEl(c, r);
+    el.classList.add(p === me() ? 'you' : 'bot');
+    el.style.setProperty('--fall', M.h - r);
+    el.classList.add('drop');
+    $$('.cell.last').forEach((x) => x.classList.remove('last'));
+    el.classList.add('last');
+    const run = line(c, r, p);
+    if (run) { finish(p, run); return true; }
+    if (moves.length === M.w * M.h) { finish(null); return true; }
+    return false;
+  }
+  function finish(winner, run) {
+    over = { winner };
+    const r = rec();
+    if (winner === null) r.d++; else if (winner === me()) r.w++; else r.l++;
+    save();
+    if (run) run.forEach(([c, rr]) => cellEl(c, rr).classList.add('won'));
+    $('#board').classList.add('done');
+    const pop = $('#pop');
+    pop.className = 'pop show' + (winner === null ? ' push' : winner === me() ? '' : ' bad');
+    pop.innerHTML = `<b>${winner === null ? 'Draw' : winner === me() ? 'You win!' : 'Bot wins'}</b>`;
+    const g = game;
+    setTimeout(() => { if (g === game) pop.classList.remove('show'); }, 2200);   // then show the winning line
+    status();
+  }
+  async function botMove() {
+    if (over || turn() === me()) return;
+    const g = game, t0 = Date.now();
+    thinking = true;
+    status();
+    const res = await ask(mode, moves.slice(), { ms: M.ms });
+    if (g !== game) return;
+    const wait = 400 - (Date.now() - t0);   // an instant answer still reads as a move
+    if (wait > 0) await sleep(wait);
+    if (g !== game) return;
+    thinking = false;
+    let c = res && res.move;
+    if (!(c >= 0 && c < M.w) || hgt[c] >= M.h) {
+      const order = Array.from({ length: M.w }, (_, i) => i).sort((a, b) => Math.abs(a - (M.w - 1) / 2) - Math.abs(b - (M.w - 1) / 2));
+      c = order.find((x) => hgt[x] < M.h);
+    }
+    drop(c);
+    status();
+  }
+  function humanMove(c) {
+    if (over || thinking || turn() !== me() || !(c >= 0 && c < M.w) || hgt[c] >= M.h) return;
+    if (!drop(c)) botMove(); else status();
+  }
+  function newGame() {
+    cancel();
+    game++;
+    M = MODES[mode];
+    moves = []; over = null; thinking = false;
+    hgt = new Array(M.w).fill(0);
+    cells = new Array(M.w * M.h).fill(0);
+    $('#pop').className = 'pop';
+    $('#k').textContent = M.k;
+    $('#note').textContent = mode === 'c4'
+      ? 'On 7×6 the bot plays perfectly. Connect 4 is a win for whoever starts: when the bot starts it always wins, and when you start you can only beat it with a perfect game.'
+      : `Get ${M.k} in a row across, up or diagonally. Nobody has solved this board, so the bot searches about 10 moves ahead and never misses a win or a block inside that search.`;
+    paintBoard();
+    status();
+    if (botFirst) botMove();
+  }
+
+  /* ---------- controls ---------- */
+  function seg(id, cb) {
+    $(id).addEventListener('click', (e) => {
+      const b = e.target.closest('button');
+      if (!b) return;
+      $$(id + ' button').forEach((x) => x.classList.toggle('on', x === b));
+      cb(b.dataset.v);
+    });
+  }
+  seg('#mode', (v) => { mode = v; newGame(); });
+  seg('#first', (v) => { botFirst = v === 'bot'; newGame(); });
+  $('#new').addEventListener('click', newGame);
+  $('#cols').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) humanMove(+b.dataset.c); });
+  $('#cols').addEventListener('mouseover', (e) => {
+    const b = e.target.closest('button');
+    $$('.cell.ghost').forEach((x) => x.classList.remove('ghost'));
+    if (!b || b.disabled) return;
+    const el = cellEl(+b.dataset.c, hgt[+b.dataset.c]);
+    if (el) el.classList.add('ghost');
+  });
+  $('#cols').addEventListener('mouseleave', () => $$('.cell.ghost').forEach((x) => x.classList.remove('ghost')));
+  document.addEventListener('keydown', (e) => {
+    const n = parseInt(e.key, 10);
+    if (n >= 1 && n <= 9 && n <= M.w) humanMove(n - 1);
+  });
+  newGame();
+})();
+</script>
+</body>
+</html>
