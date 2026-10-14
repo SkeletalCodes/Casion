@@ -84,6 +84,10 @@ BB.rules = {
     how: ['Pick between 1 and 5 of the nine holes, or press Auto pick.', 'Press Whack: three moles pop up from three different holes.', 'Each mole that pops from one of your holes is a hit. The pay table under the board shows what every number of hits pays.'],
     max: '72.75×', risk: 'Fewer holes means fewer hits but bigger prizes — a single hole pays 2.91×, three hits on three holes pays 72.75×.',
   },
+  connect: {
+    how: ['Pick a game: Connect 4 on a 7×6 board, Connect 5 on 9×7 or Connect 6 on 11×8, and choose whether you or the bot moves first.', 'Click a column (or press its number) to drop a disc. It falls to the lowest empty space.', 'Line up 4, 5 or 6 of your discs across, up and down, or diagonally to win. A full board with no line is a draw.', 'This is free play: there is no bet and nothing to win or lose but bragging rights.'],
+    facts: [['Bet', 'None — free play'], ['Connect 4 bot', 'Perfect play'], ['Bigger boards', 'Deep search']],
+  },
   snake: {
     how: ['Pick a difficulty and place a bet.', 'Press Move and the snake heads for the next apple. A golden apple grows the snake and the multiplier.', 'A rotten apple ends the round and the bet is lost.', 'Cash out at any time to take the current multiplier. After 25 apples it cashes out for you.'],
     max: 'No practical cap', risk: 'Easy apples are golden 90% of the time, Medium 75%, Hard 55% and Expert just 35%.',

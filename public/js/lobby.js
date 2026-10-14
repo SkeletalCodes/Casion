@@ -74,7 +74,7 @@
         const g = BB.games[id], r = BB.rules && BB.rules[id];
         return `<a class="wcard" href="#/g/${g.id}">
           <span class="wthumb" style="--c1:${g.colors[0]};--c2:${g.colors[1]}"><i>${g.icon}</i></span>
-          <span class="wmeta"><b>${esc(g.name)}</b><small>RTP ${g.rtp}%</small></span>
+          <span class="wmeta"><b>${esc(g.name)}</b><small>${BB.rtpText(g)}</small></span>
           <span class="wamt">${r && r.max ? 'up to ' + r.max : 'Play'}</span>
         </a>`;
       });
@@ -116,7 +116,7 @@
         <div class="tile-art">${g.art}</div>
         <span class="tile-play">Play</span>
         <div class="tile-name">${esc(g.name)}</div>
-        <span class="tile-meta">${g.provider === 'originals' ? 'RTP ' + g.rtp + '%' : esc(p.name) + (g.vol ? ' · ' + g.vol : '')}</span>
+        <span class="tile-meta">${g.provider === 'originals' ? BB.rtpText(g) : esc(p.name) + (g.vol ? ' · ' + g.vol : '')}</span>
       </a>
       <button type="button" class="tile-fav${fav ? ' on' : ''}" data-fav="${id}" aria-label="Favourite ${esc(g.name)}" aria-pressed="${fav}">${ic('star', 17)}</button>
     </div>`;
@@ -209,7 +209,7 @@
         </div>
 
         ${recent.length ? `<div class="sec-head sm"><h2>Continue playing</h2></div>
-        <div class="recent">${recent.map((id) => { const g = BB.games[id]; return `<a class="rcard" href="#/g/${id}"><span class="wthumb" style="--c1:${g.colors[0]};--c2:${g.colors[1]}"><i>${g.icon}</i></span><span><b>${esc(g.name)}</b><small>${esc(BB.provOf(g).short)} · ${g.rtp}%</small></span></a>`; }).join('')}</div>` : ''}
+        <div class="recent">${recent.map((id) => { const g = BB.games[id]; return `<a class="rcard" href="#/g/${id}"><span class="wthumb" style="--c1:${g.colors[0]};--c2:${g.colors[1]}"><i>${g.icon}</i></span><span><b>${esc(g.name)}</b><small>${esc(BB.provOf(g).short)} · ${g.free ? 'Free' : g.rtp + '%'}</small></span></a>`; }).join('')}</div>` : ''}
 
         <div class="filters" id="games-top">
           <div class="chips" id="cat-chips">

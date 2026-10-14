@@ -977,6 +977,8 @@
     instant: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="4"/><circle cx="9" cy="9" r="1.3" fill="currentColor"/><circle cx="15" cy="15" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/></svg>',
     cashout: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19l5-6 4 3 7-9"/><path d="M15 7h5v5"/></svg>',
   };
+  /** "RTP 98.0%", or "Free play" for a game with no bet (g.free). */
+  function rtpText(g) { return g.free ? 'Free play' : 'RTP ' + g.rtp + '%'; }
   function registerGame(g) { g.cat = g.cat || DEFAULT_CAT[g.id] || 'instant'; g.provider = g.provider || 'originals'; g.isGame = true; games[g.id] = g; order.push(g.id); }
   /** The studio behind a game (house originals unless the game says otherwise). */
   function provOf(g) { return (BB.providers && BB.providers[g.provider]) || { name: 'BananaBet Originals', short: 'Originals', color: '#ffc93c', mark: 'B' }; }
@@ -1077,10 +1079,10 @@
       <div class="modal-body">
         <h2 class="modal-title"><span class="rules-ic" style="--c1:${g.colors[0]};--c2:${g.colors[1]}"><i>${g.icon}</i></span>${esc(g.name)}</h2>
         <ol class="rules-list">${r.how.map((x) => `<li>${x}</li>`).join('')}</ol>
-        <div class="rules-facts">
+        <div class="rules-facts">${r.facts ? r.facts.map((f) => `<div><small>${f[0]}</small><b>${f[1]}</b></div>`).join('') : `
           <div><small>Return to player</small><b>${g.rtp}%</b></div>
           <div><small>House edge</small><b>${(100 - parseFloat(g.rtp)).toFixed(1)}%</b></div>
-          <div><small>Top payout</small><b>${r.max || '—'}</b></div>
+          <div><small>Top payout</small><b>${r.max || '—'}</b></div>`}
         </div>
         ${r.risk ? `<p class="rules-risk"><b>Risk:</b> ${r.risk}</p>` : ''}
         <p class="fair-note">${keys ? 'Shortcuts: <code>Space</code> bet · <code>A</code> halve the bet · <code>S</code> double it. ' : ''}Every result comes from your seed pair — open <a href="#" data-open="fair" style="color:var(--win)">Provably fair</a> to check a bet.</p>
@@ -1118,7 +1120,7 @@
             <a href="${g.cat === 'slots' ? '#/slots' : '#/'}" class="back${g.cat === 'slots' ? ' wide' : ''}" aria-label="${g.cat === 'slots' ? 'Back to all slots' : 'Back to lobby'}"><svg viewBox="0 0 24 24" width="18" height="18"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.200" stroke-linecap="round" stroke-linejoin="round"/></svg>${g.cat === 'slots' ? '<span>All slots</span>' : ''}</a>
             <h1>${g.name}</h1>
             <span class="chip-tag" style="color:${provOf(g).color};background:${provOf(g).color}1f">${provOf(g).short}</span>
-            <span class="rtp">RTP ${g.rtp}%</span>
+            <span class="rtp">${rtpText(g)}</span>
           </div>
           <div class="game" data-game="${g.id}">
             <div class="game-panel" id="g-panel"></div>
@@ -1134,10 +1136,10 @@
               <div class="gf-r"><button class="fair-chip" data-open="fair" title="How results are generated">${ic('shield', 14)}Fairness</button></div>
             </div>
           </div>
-          <section class="card-sec">
+          ${g.free ? '' : `<section class="card-sec">
             <div class="sec-row"><h3>My bets</h3><a class="link" href="#/account/bets">Full history</a></div>
             <div class="table four" id="mybets"></div>
-          </section>
+          </section>`}
         </div>`));
       current = g;
       $('#gf-fav').addEventListener('click', () => { toggleFav(g.id); paintFav(); });
@@ -1170,7 +1172,7 @@
       const q = input.value.trim().toLowerCase();
       const list = order.filter((id) => { const g = games[id]; return !q || g.name.toLowerCase().includes(q) || provOf(g).name.toLowerCase().includes(q) || g.cat.includes(q); }).slice(0, q ? 12 : 8);
       res.innerHTML = (q ? '' : '<div class="search-h">Popular right now</div>') + (list.length
-        ? list.map((id) => { const g = games[id]; return `<a class="sres" href="#/g/${id}"><span class="wthumb" style="--c1:${g.colors[0]};--c2:${g.colors[1]}"><i>${g.icon}</i></span><span><b>${esc(g.name)}</b><small>${esc(provOf(g).name)} · RTP ${g.rtp}%</small></span></a>`; }).join('')
+        ? list.map((id) => { const g = games[id]; return `<a class="sres" href="#/g/${id}"><span class="wthumb" style="--c1:${g.colors[0]};--c2:${g.colors[1]}"><i>${g.icon}</i></span><span><b>${esc(g.name)}</b><small>${esc(provOf(g).name)} · ${rtpText(g)}</small></span></a>`; }).join('')
         : '<div class="empty">No games match that.</div>');
     };
     input.addEventListener('input', paint);
@@ -1181,7 +1183,7 @@
   }
 
   /* ---------- autobet (games that settle in one press) ---------- */
-  const NO_AUTO = { blackjack: 1, roulette: 1, hilo: 1, crash: 1, mines: 1, towers: 1, pump: 1, snake: 1, cups: 1 };
+  const NO_AUTO = { blackjack: 1, roulette: 1, hilo: 1, crash: 1, mines: 1, towers: 1, pump: 1, snake: 1, cups: 1, connect: 1 };
   let auto = null, lastAmount = null, placed = false;
 
   function autoPaint() {
@@ -1495,7 +1497,7 @@
   }
 
   window.BB = {
-    start, registerGame, registerPage, setLobby, onLeave, games, order, bets, betRow, history, live,
+    start, registerGame, rtpText, registerPage, setLobby, onLeave, games, order, bets, betRow, history, live,
     placeBet, win, credit, debit, faucet, coins, frame, unframe, logBet, balance, isAuthed, openAuth, signOut, toast, nudge, confetti, showModal, hideModal, confirm: confirmBox,
     user, saveUsers, refresh, addTx, notify, resetAccount, deleteAccount, dayKey, paintChrome, paintBalance, reroute: route, authGate, closePop,
     isFav, toggleFav, provOf, openSearch, vipInfo, levels: LEVELS, avatars: AVATARS, avatarHTML, icon: ic,
